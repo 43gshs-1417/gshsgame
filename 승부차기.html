@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sharp Strike: Penalty Kick</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Inter', 'Segoe UI', Roboto, sans-serif; }
+        body { 
+            margin: 0; 
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
+            color: #ffffff; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        h1 { 
+            text-transform: uppercase; 
+            letter-spacing: 4px; 
+            color: #fff; 
+            margin-top: 0;
+            font-size: 32px;
+            font-weight: 900;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3);
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+        }
+        
+        .panel { 
+            background: linear-gradient(135deg, #1b4b27, #297a3f); 
+            border: 4px solid #fff; 
+            padding: 40px; 
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8); 
+            width: 450px; 
+            text-align: center; 
+            position: relative;
+            overflow: hidden;
+        }
+        .panel::before {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 150px; height: 150px;
+            border: 4px solid rgba(255,255,255,0.3); border-radius: 50%; z-index: 0;
+        }
+        .panel::after {
+            content: ''; position: absolute; top: 50%; left: 0; right: 0;
+            height: 4px; background: rgba(255,255,255,0.3); z-index: 0;
+        }
+        .panel > * { position: relative; z-index: 1; }
+        
+        input { 
+            width: 100%; padding: 15px; margin-bottom: 20px; 
+            border: 1px solid #555; background: #111; color: #fff; 
+            font-size: 16px; outline: none; transition: all 0.3s ease;
+            text-align: center; letter-spacing: 2px;
+        }
+        input:focus { border-color: #00ffcc; box-shadow: 0 0 15px rgba(0, 255, 204, 0.3); }
+        
+        button { 
+            width: 100%; background: linear-gradient(135deg, #2b2b36, #1a1a24);
+            color: white; border: 1px solid #555; padding: 15px; 
+            font-size: 14px; font-weight: 800; cursor: pointer; 
+            text-transform: uppercase; transition: all 0.2s ease; letter-spacing: 2px;
+        }
+        button:hover { background: #fff; color: #000; border-color: #fff; }
+        button:active { transform: scale(0.98); }
+        button.btn-primary { 
+            background: linear-gradient(135deg, #00ffcc, #0099ff); 
+            color: #000; border: none; margin-bottom: 15px; 
+        }
+        button.btn-primary:hover { background: linear-gradient(135deg, #ffffff, #e0e0e0); box-shadow: 0 0 20px rgba(0, 255, 204, 0.5); }
+        button.btn-danger {
+            background: #DB4437; border-color: #DB4437;
+        }
+        button.btn-danger:hover { background: #ff5a4d; border-color: #ff5a4d; color: #fff; }
+        
+        #waiting-screen { display: none; }
+        #game-screen { 
+            display: none; flex-direction: column; align-items: center; 
+            width: 100%; max-width: 900px;
+        }
+
+        /* 로딩 스피너 애니메이션 */
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #00ffcc;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            animation: spin 1s linear infinite;
+            margin: 30px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 스코어보드 디자인 */
+        #scoreboard {
+            display: flex; justify-content: space-between; align-items: center;
+            width: 700px; margin-bottom: 20px; background: rgba(15, 15, 20, 0.85);
+            padding: 15px 30px; border: 2px solid #333; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border-radius: 8px;
+        }
+        .score-side { display: flex; align-items: center; gap: 15px; }
+        .score-name { font-weight: 900; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; }
+        #name-left { color: #00ffcc; }
+        #name-right { color: #00ffcc; } /* 기본 통일감 유지 */
+        .score-circles { display: flex; gap: 8px; }
+        .score-circle { 
+            width: 18px; height: 18px; border-radius: 50%; 
+            border: 2px solid #555; background: #222; 
+        }
+        /* O, X 결과 색상 */
+        .score-circle.goal { background: #0F9D58; border-color: #0F9D58; box-shadow: 0 0 10px rgba(15, 157, 88, 0.6); }
+        .score-circle.miss { background: #DB4437; border-color: #DB4437; box-shadow: 0 0 10px rgba(219, 68, 55, 0.6); }
+        #score-center { font-size: 32px; font-weight: 900; letter-spacing: 4px; }
+
+        #turn-indicator {
+            font-size: 26px; font-weight: 900; margin-bottom: 15px;
+            letter-spacing: 3px; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.6); padding: 10px 40px; border: 1px solid #444; border-radius: 5px;
+        }
+        
+        #stadium-wrapper {
+            position: relative; width: 700px; height: 450px; background: #111;
+            border: 2px solid #333; box-shadow: 0 30px 60px rgba(0,0,0,0.9); overflow: hidden;
+        }
+
+        #pitch {
+            position: absolute; bottom: 0; width: 100%; height: 250px;
+            background: linear-gradient(to bottom, #1b4b27 0%, #297a3f 100%);
+            border-top: 2px solid rgba(255,255,255,0.3);
+        }
+        #pitch::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+            background-size: 100% 20px, 40px 100%; transform: perspective(500px) rotateX(60deg); transform-origin: top;
+        }
+        #penalty-box-line {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 400px; height: 100px; border: 3px solid rgba(255,255,255,0.6); border-bottom: none;
+        }
+        
+        #goalpost-area {
+            position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+            width: 600px; height: 250px; 
+        }
+        #goal-frame {
+            position: absolute; width: 100%; height: 100%; border: 8px solid #e0e0e0;
+            border-bottom: none; box-shadow: inset 5px 5px 15px rgba(0,0,0,0.5), 5px 5px 15px rgba(0,0,0,0.7);
+            background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0.2)); z-index: 2;
+        }
+        #goal-net {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-image: linear-gradient(45deg, rgba(255,255,255,0.4) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.4) 75%, rgba(255,255,255,0.4)), linear-gradient(135deg, rgba(255,255,255,0.4) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.4) 75%, rgba(255,255,255,0.4));
+            background-size: 20px 20px; background-position: 0 0, 10px 0; z-index: 1; opacity: 0.6;
+        }
+        
+        .hud-target { position: absolute; transition: left 0.1s ease-out, top 0.1s ease-out; transform: translate(-50%, -50%); z-index: 10; }
+        #kicker-target { width: 50px; height: 50px; display: none; border: 1px solid rgba(0, 255, 204, 0.5); }
+        #kicker-target::before, #kicker-target::after { content: ''; position: absolute; background: #00ffcc; }
+        #kicker-target::before { width: 100%; height: 2px; top: 24px; left: 0; }
+        #kicker-target::after { height: 100%; width: 2px; left: 24px; top: 0; }
+        
+        #gk-target { width: 160px; height: 160px; display: none; border: 2px dashed rgba(255, 0, 85, 0.8); background: rgba(255, 0, 85, 0.1); border-radius: 50%; }
+        #gk-target::before, #gk-target::after { content: ''; position: absolute; background: #ff0055; }
+        #gk-target::before { width: 20px; height: 2px; top: 79px; left: 70px; }
+        #gk-target::after { height: 20px; width: 2px; left: 79px; top: 70px; }
+        
+        #ball {
+            position: absolute; width: 60px; height: 60px; left: 350px; top: 380px;
+            transform: translate(-50%, -50%); z-index: 20; transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+            filter: drop-shadow(0 10px 5px rgba(0,0,0,0.8));
+        }
+
+        #goalkeeper-svg {
+            position: absolute; width: 180px; height: 180px; left: 300px; top: 150px;
+            transform: translate(-50%, -50%); z-index: 15; transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            filter: drop-shadow(5px 15px 10px rgba(0,0,0,0.7)); fill: #111; stroke: #fff; stroke-width: 1px;
+        }
+        
+        #power-bar-container { 
+            width: 700px; height: 15px; background: #111; margin-top: 20px; position: relative; 
+            border: 1px solid #444; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        #power-fill { 
+            height: 100%; width: 0%; background: linear-gradient(90deg, #00ffcc, #ffcc00, #ff0055);
+            transition: width 0.05s linear;
+        }
+        #power-zone {
+            position: absolute; height: 100%; width: 80%; left: 10%; 
+            border-left: 2px solid #fff; border-right: 2px solid #fff;
+            background: rgba(255,255,255,0.05); pointer-events: none;
+        }
+        
+        .instructions { 
+            margin-top: 20px; background: rgba(0,0,0,0.6); padding: 20px; border: 1px solid #333;
+            color: #ccc; font-size: 13px; text-align: left; line-height: 1.8; width: 700px;
+            display: flex; justify-content: space-between; letter-spacing: 1px; border-radius: 8px;
+        }
+        .inst-box { width: 48%; }
+        .inst-title { font-weight: 800; margin-bottom: 8px; font-size: 15px; }
+        .key-btn { 
+            display: inline-block; background: #222; color: #fff; padding: 3px 8px; 
+            border: 1px solid #555; font-size: 11px; margin: 0 3px; box-shadow: 0 2px 0px #000;
+        }
+
+        #custom-alert {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .alert-box {
+            background: #111; border: 1px solid #ff0055; padding: 40px; text-align: center;
+            box-shadow: 0 0 30px rgba(255, 0, 85, 0.4); width: 350px;
+        }
+        .alert-box p { margin-bottom: 25px; font-weight: bold; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <!-- 메인 로비 -->
+    <div id="menu-screen" class="panel">
+        <h1 style="text-shadow: 2px 2px 0 #000;">Sharp Strike</h1>
+        <p style="color: #eee; font-size: 13px; font-weight: bold; margin-bottom: 30px; letter-spacing: 2px; text-shadow: 1px 1px 0 #000;">⚽ PROFESSIONAL PENALTY ⚽</p>
+        <button onclick="startSinglePlayer()" class="btn-primary">AI 대결 (Single Match)</button>
+        <div style="height: 1px; background: #444; margin: 30px 0;"></div>
+        <input type="text" id="room-code" placeholder="ENTER ROOM CODE">
+        <button onclick="handleJoinMultiplayer()">온라인 1vs1 매치</button>
+        <p id="status-msg" style="color: #00ffcc; margin-top: 20px; font-weight: bold; font-size: 14px;"></p>
+    </div>
+
+    <!-- 대기실 화면 -->
+    <div id="waiting-screen" class="panel">
+        <h1 style="text-shadow: 2px 2px 0 #000;">Waiting...</h1>
+        <p style="color: #00ffcc; font-size: 16px; font-weight: bold; margin-bottom: 10px;">방 번호: <span id="waiting-room-code"></span></p>
+        <div class="loader"></div>
+        <p style="color: #eee; font-size: 14px; margin-bottom: 30px; letter-spacing: 1px;">상대방이 접속하기를 기다리고 있습니다.</p>
+        <button class="btn-danger" onclick="leaveWaitingRoom()">로비로 돌아가기</button>
+    </div>
+
+    <!-- 게임 화면 -->
+    <div id="game-screen">
+        
+        <!-- 상단 스코어보드 -->
+        <div id="scoreboard">
+            <div class="score-side">
+                <span id="name-left" class="score-name">PLAYER</span>
+                <div id="circles-left" class="score-circles"></div>
+            </div>
+            <div id="score-center">0 - 0</div>
+            <div class="score-side">
+                <div id="circles-right" class="score-circles"></div>
+                <span id="name-right" class="score-name">AI</span>
+            </div>
+        </div>
+
+        <h2 id="turn-indicator">대기 중...</h2>
+        
+        <div id="stadium-wrapper">
+            <div id="pitch"><div id="penalty-box-line"></div></div>
+            
+            <div id="goalpost-area">
+                <div id="goal-net"></div>
+                <div id="goal-frame"></div>
+                
+                <div id="kicker-target" class="hud-target"></div>
+                <div id="gk-target" class="hud-target"></div>
+                
+                <svg id="goalkeeper-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <path id="gk-path" d="M45,10 L55,10 L55,20 L45,20 Z M40,25 L60,25 L65,45 L55,45 L55,35 L45,35 L45,45 L35,45 Z M42,50 L58,50 L55,80 L60,95 L50,95 L48,70 L48,95 L38,95 L45,80 Z"/>
+                </svg>
+            </div>
+            
+            <svg id="ball" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="256" cy="256" r="256" fill="#f0f0f0"/>
+                <path fill="#222" d="M256 64L160 132l32 108h128l32-108L256 64zm-128 92l-84 84 20 116 100-36-36-164zm256 0l-36 164 100 36 20-116-84-84zM180 364l76 68 76-68-44-124h-64l-44 124zM68 364l84 84 40-100-124-20zm376 0l-124 20 40 100 84-84z"/>
+                <circle cx="256" cy="256" r="256" fill="url(#ball-shadow)"/>
+                <defs>
+                    <radialGradient id="ball-shadow" cx="30%" cy="30%" r="70%">
+                        <stop offset="0%" stop-color="rgba(255,255,255,0.4)"/>
+                        <stop offset="100%" stop-color="rgba(0,0,0,0.6)"/>
+                    </radialGradient>
+                </defs>
+            </svg>
+        </div>
+        
+        <div id="power-bar-container">
+            <div id="power-fill"></div>
+            <div id="power-zone"></div>
+        </div>
+        
+        <div class="instructions">
+            <div class="inst-box">
+                <div class="inst-title" style="color: #00ffcc;">[ KICKER ]</div>
+                <span class="key-btn">방향키</span> 슈팅 궤적 조준<br>
+                <span class="key-btn">Space</span> (Hold) 파워 충전<br>
+                <span class="key-btn">Space</span> (Release) 슛!
+            </div>
+            <div class="inst-box">
+                <div class="inst-title" style="color: #ff0055;">[ GOALKEEPER ]</div>
+                <span class="key-btn">방향키</span> 다이빙 위치 예측<br>
+                <span class="key-btn">Space</span> 다이빙 확정
+            </div>
+        </div>
+    </div>
+
+    <div id="custom-alert">
+        <div class="alert-box">
+            <p id="alert-msg">메시지</p>
+            <button onclick="closeAlert()">확인</button>
+        </div>
+    </div>
+
+    <!-- 하나의 모듈 스크립트로 병합 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, updateDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // === Firebase 설정 및 글로벌 상태 변수 ===
+        let app, auth, db;
+        let userId = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'sharp-strike-default';
+        let currentRoomCode = null;
+        let isHost = false;
+        let unsubscribeRoom = null;
+
+        // === 게임 로직 상태 변수 ===
+        let mode = ''; 
+        let currentRole = 'kicker'; 
+        
+        const GOAL_W = 600;
+        const GOAL_H = 250;
+        const HITBOX_RADIUS = 100;
+
+        let kX = GOAL_W / 2, kY = GOAL_H / 2;
+        let gX = GOAL_W / 2, gY = GOAL_H / 2;
+        
+        let power = 0;
+        let powerInterval = null;
+        let isPowering = false;
+        let actionLocked = false;
+        let powerDirection = 1;
+
+        // 게임 승패 관련 상태 변수
+        let totalKicksTaken = 0; 
+        let historyLeft = []; // 1번 키커
+        let historyRight = []; // 2번 키커
+
+        // DOM Elements
+        const screens = { 
+            menu: document.getElementById('menu-screen'), 
+            waiting: document.getElementById('waiting-screen'),
+            game: document.getElementById('game-screen') 
+        };
+        const targets = { kicker: document.getElementById('kicker-target'), gk: document.getElementById('gk-target') };
+        const visuals = { ball: document.getElementById('ball'), gkSVG: document.getElementById('goalkeeper-svg'), gkPath: document.getElementById('gk-path') };
+        const powerFill = document.getElementById('power-fill');
+        const turnIndicator = document.getElementById('turn-indicator');
+
+        const PATH_STAND = "M45,10 L55,10 L55,20 L45,20 Z M40,25 L60,25 L65,45 L55,45 L55,35 L45,35 L45,45 L35,45 Z M42,50 L58,50 L55,80 L60,95 L50,95 L48,70 L48,95 L38,95 L45,80 Z";
+        const PATH_DIVE = "M70,30 L80,25 L85,35 L75,40 Z M50,45 L70,40 L90,60 L75,70 L65,55 L55,65 L40,55 Z M40,60 L50,70 L30,90 L10,85 L20,75 L35,80 L25,65 Z";
+
+        // === Firebase 초기화 함수 ===
+        async function initFirebase() {
+            try {
+                if (typeof __firebase_config !== 'undefined') {
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) userId = user.uid;
+                        else userId = null;
+                    });
+                } else {
+                    userId = "local-user-" + Math.floor(Math.random() * 1000);
+                }
+            } catch (error) {
+                console.error("Firebase 초기화 에러:", error);
+                showCustomAlert("서버 연결에 실패했습니다. 싱글플레이만 가능합니다.");
+            }
+        }
+        initFirebase();
+
+        // === 공통 UI 함수 ===
+        function showCustomAlert(msg) { 
+            document.getElementById('alert-msg').innerText = msg; 
+            document.getElementById('custom-alert').style.display = 'flex'; 
+        }
+        function closeAlert() { 
+            document.getElementById('custom-alert').style.display = 'none'; 
+        }
+
+        // === 멀티플레이 네트워킹 함수 ===
+        async function joinMultiplayerRoom(roomCode) {
+            if (!db || !userId) return showCustomAlert("서버에 연결되지 않았습니다.");
+            try {
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                const roomSnap = await getDoc(roomRef);
+
+                if (!roomSnap.exists()) {
+                    isHost = true;
+                    // 대기 상태로 진입
+                    await setDoc(roomRef, {
+                        hostId: userId, guestId: null, status: 'waiting', kickerAction: null, gkAction: null, turn: 1, firstKickerId: null
+                    });
+                    currentRoomCode = roomCode;
+                    
+                    screens.menu.style.display = 'none';
+                    screens.waiting.style.display = 'flex';
+                    document.getElementById('waiting-room-code').innerText = roomCode;
+                    listenToRoom(roomCode);
+                } else {
+                    const roomData = roomSnap.data();
+                    if (roomData.guestId && roomData.guestId !== userId) return showCustomAlert("방이 꽉 찼습니다.");
+                    
+                    if (!roomData.guestId || roomData.guestId === userId) {
+                        isHost = false;
+                        currentRoomCode = roomCode;
+                        
+                        // Guest 접속 시 무작위로 선공(키커) 후공 지정
+                        const isGuestFirst = Math.random() > 0.5;
+                        const firstKickerId = isGuestFirst ? userId : roomData.hostId;
+                        
+                        await updateDoc(roomRef, { 
+                            guestId: userId, 
+                            status: 'playing',
+                            firstKickerId: firstKickerId 
+                        });
+                        listenToRoom(roomCode);
+                    }
+                }
+            } catch (error) {
+                console.error("방 참가 에러:", error);
+                showCustomAlert("방 접속 중 오류가 발생했습니다.");
+            }
+        }
+
+        async function leaveWaitingRoom() {
+            if (isHost && currentRoomCode && db) {
+                try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomCode)); } catch(e){}
+            }
+            if (unsubscribeRoom) unsubscribeRoom();
+            resetToMenu();
+        }
+
+        async function submitMultiplayerAction(x, y, pwr) {
+             if (!db || !currentRoomCode) return;
+             const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomCode);
+             const actionData = { targetX: x, targetY: y, power: pwr };
+             try {
+                 if (currentRole === 'kicker') await updateDoc(roomRef, { kickerAction: actionData });
+                 else await updateDoc(roomRef, { gkAction: actionData });
+             } catch (error) {
+                 console.error("행동 제출 에러:", error);
+             }
+        }
+
+        function listenToRoom(roomCode) {
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            if (unsubscribeRoom) unsubscribeRoom();
+            
+            unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+                if (!docSnap.exists()) {
+                    showCustomAlert("방이 종료되거나 폭파되었습니다.");
+                    resetToMenu();
+                    return;
+                }
+                const data = docSnap.data();
+                
+                // 상대 접속 시 게임 시작 처리 및 역할 분담 (최초 1회 실행)
+                if (data.status === 'playing' && mode !== 'multi') {
+                    mode = 'multi';
+                    const isFirstKicker = (userId === data.firstKickerId);
+                    currentRole = isFirstKicker ? 'kicker' : 'goalkeeper';
+                    startGameScreen(isFirstKicker);
+                }
+                
+                // 라운드 결과 수신
+                if (data.status === 'playing' && data.kickerAction && data.gkAction) {
+                    processResult({ kicker: data.kickerAction, goalkeeper: data.gkAction });
+                    if (isHost) {
+                        setTimeout(async () => {
+                            try { await updateDoc(roomRef, { kickerAction: null, gkAction: null, turn: data.turn + 1 }); } 
+                            catch(e) { console.error("턴 초기화 에러", e); }
+                        }, 3500);
+                    }
+                }
+            });
+        }
+        
+        window.addEventListener('beforeunload', async () => {
+            if (isHost && currentRoomCode && db) {
+                 try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomCode)); } catch(e) {}
+            }
+        });
+
+        // === 게임 로직 및 조작 ===
+        function startSinglePlayer() { 
+            mode = 'single'; 
+            currentRole = 'kicker'; 
+            startGameScreen(true); 
+        }
+        
+        function handleJoinMultiplayer() {
+            const code = document.getElementById('room-code').value.trim();
+            if(!code) return showCustomAlert("방 번호를 입력해주세요.");
+            joinMultiplayerRoom(code);
+        }
+
+        function startGameScreen(isFirstKicker = true) { 
+            totalKicksTaken = 0;
+            historyLeft = [];
+            historyRight = [];
+            
+            // 싱글플레이 또는 멀티플레이 시 이름 배정 (Left는 항상 선축, Right는 후축)
+            if (mode === 'single') {
+                document.getElementById('name-left').innerText = "PLAYER";
+                document.getElementById('name-right').innerText = "AI";
+            } else {
+                document.getElementById('name-left').innerText = isFirstKicker ? "PLAYER" : "OPPONENT";
+                document.getElementById('name-right').innerText = isFirstKicker ? "OPPONENT" : "PLAYER";
+            }
+            
+            renderScoreboard();
+
+            screens.menu.style.display = 'none'; 
+            screens.waiting.style.display = 'none';
+            screens.game.style.display = 'flex'; 
+            setupRound(); 
+        }
+
+        function resetToMenu() { 
+            screens.menu.style.display = 'block'; 
+            screens.waiting.style.display = 'none';
+            screens.game.style.display = 'none'; 
+            document.getElementById('status-msg').innerText = ''; 
+            mode = ''; 
+            currentRoomCode = null;
+        }
+
+        function renderScoreboard() {
+            const circlesLeft = document.getElementById('circles-left');
+            const circlesRight = document.getElementById('circles-right');
+            const scoreCenter = document.getElementById('score-center');
+            
+            let leftScore = historyLeft.filter(g => g).length;
+            let rightScore = historyRight.filter(g => g).length;
+            scoreCenter.innerText = `${leftScore} - ${rightScore}`;
+            
+            circlesLeft.innerHTML = '';
+            circlesRight.innerHTML = '';
+
+            let displayCount = Math.max(5, Math.max(historyLeft.length, historyRight.length));
+            if (historyLeft.length === historyRight.length && historyLeft.length >= 5 && !checkWinCondition()) {
+                 displayCount = historyLeft.length + 1; 
+            }
+
+            for(let i=0; i<displayCount; i++) {
+                let cl = document.createElement('div');
+                cl.className = 'score-circle';
+                if (i < historyLeft.length) cl.classList.add(historyLeft[i] ? 'goal' : 'miss');
+                circlesLeft.appendChild(cl);
+
+                let cr = document.createElement('div');
+                cr.className = 'score-circle';
+                if (i < historyRight.length) cr.classList.add(historyRight[i] ? 'goal' : 'miss');
+                circlesRight.appendChild(cr);
+            }
+        }
+
+        function checkWinCondition() {
+            let leftScore = historyLeft.filter(g => g).length;
+            let rightScore = historyRight.filter(g => g).length;
+            let leftKicks = historyLeft.length;
+            let rightKicks = historyRight.length;
+            
+            let leftRemaining = 5 - leftKicks;
+            let rightRemaining = 5 - rightKicks;
+            if (leftRemaining < 0) leftRemaining = 0;
+            if (rightRemaining < 0) rightRemaining = 0;
+
+            if (leftScore > rightScore + rightRemaining) return 'left';
+            if (rightScore > leftScore + leftRemaining) return 'right';
+            
+            if (leftKicks >= 5 && rightKicks >= 5 && leftKicks === rightKicks) {
+                if (leftScore > rightScore) return 'left';
+                if (rightScore > leftScore) return 'right';
+            }
+            return null;
+        }
+
+        function setupRound() {
+            actionLocked = false; power = 0; powerFill.style.width = '0%';
+            
+            visuals.ball.style.transform = 'translate(-50%, -50%) scale(1) rotate(0deg)';
+            visuals.ball.style.left = '350px'; visuals.ball.style.top = '380px';
+            visuals.ball.style.filter = 'drop-shadow(0 10px 5px rgba(0,0,0,0.8))';
+            
+            visuals.gkPath.setAttribute('d', PATH_STAND);
+            visuals.gkSVG.style.transform = 'translate(-50%, -50%) scaleX(1)';
+            visuals.gkSVG.style.left = '300px'; visuals.gkSVG.style.top = '150px';
+
+            kX = GOAL_W / 2; kY = GOAL_H / 2;
+            gX = GOAL_W / 2; gY = GOAL_H / 2;
+            updateCursorPositions();
+
+            if (currentRole === 'kicker') {
+                turnIndicator.innerText = "[ KICKER ] 슛을 조준하세요";
+                turnIndicator.style.color = "#00ffcc";
+                targets.kicker.style.display = 'block'; targets.gk.style.display = 'none';
+            } else {
+                turnIndicator.innerText = "[ GOALKEEPER ] 다이빙 위치를 정하세요";
+                turnIndicator.style.color = "#ff0055";
+                targets.gk.style.display = 'block'; targets.kicker.style.display = 'none';
+            }
+        }
+
+        const speed = 12; const keys = {};
+        function gameLoop() {
+            if (!actionLocked && screens.game.style.display !== 'none') {
+                if (currentRole === 'kicker') {
+                    if (keys['ArrowUp']) kY = Math.max(0, kY - speed);
+                    if (keys['ArrowDown']) kY = Math.min(GOAL_H, kY + speed);
+                    if (keys['ArrowLeft']) kX = Math.max(0, kX - speed);
+                    if (keys['ArrowRight']) kX = Math.min(GOAL_W, kX + speed);
+                } else if (currentRole === 'goalkeeper') {
+                    if (keys['ArrowUp']) gY = Math.max(0, gY - speed);
+                    if (keys['ArrowDown']) gY = Math.min(GOAL_H, gY + speed);
+                    if (keys['ArrowLeft']) gX = Math.max(0, gX - speed);
+                    if (keys['ArrowRight']) gX = Math.min(GOAL_W, gX + speed);
+                }
+                updateCursorPositions();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+        requestAnimationFrame(gameLoop);
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (actionLocked || screens.game.style.display === 'none') return;
+            if (currentRole === 'kicker' && e.code === 'Space' && !isPowering) {
+                isPowering = true; powerDirection = 1; power = 0;
+                powerInterval = setInterval(() => {
+                    power += 3 * powerDirection;
+                    if (power >= 100) { power = 100; powerDirection = -1; }
+                    if (power <= 0) { power = 0; powerDirection = 1; }
+                    powerFill.style.width = power + '%';
+                }, 15);
+            }
+            if (currentRole === 'goalkeeper' && e.code === 'Space') submitAction(gX, gY, 0);
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+            if (actionLocked || screens.game.style.display === 'none') return;
+            if (currentRole === 'kicker' && e.code === 'Space' && isPowering) {
+                clearInterval(powerInterval); isPowering = false;
+                submitAction(kX, kY, power);
+            }
+        });
+
+        function updateCursorPositions() {
+            targets.kicker.style.left = kX + 'px'; targets.kicker.style.top = kY + 'px';
+            targets.gk.style.left = gX + 'px'; targets.gk.style.top = gY + 'px';
+        }
+
+        function submitAction(x, y, pwr) {
+            actionLocked = true;
+            turnIndicator.innerText = "결과 대기 중...";
+            turnIndicator.style.color = "#ffffff";
+            targets.kicker.style.display = 'none'; targets.gk.style.display = 'none';
+
+            if (mode === 'single') handleSinglePlayerAI(x, y, pwr);
+            else submitMultiplayerAction(x, y, pwr);
+        }
+
+        function handleSinglePlayerAI(playerX, playerY, pwr) {
+            let aiData = {}; let resultData = {};
+            if (currentRole === 'kicker') {
+                aiData = { targetX: Math.random() * GOAL_W, targetY: Math.random() * GOAL_H, power: 0 };
+                resultData = { kicker: { targetX: playerX, targetY: playerY, power: pwr }, goalkeeper: aiData };
+            } else {
+                let aiPower = Math.random() > 0.8 ? (Math.random() > 0.5 ? 5 : 95) : 30 + Math.random() * 50; 
+                aiData = { targetX: Math.random() * GOAL_W, targetY: Math.random() * GOAL_H, power: aiPower };
+                resultData = { kicker: aiData, goalkeeper: { targetX: playerX, targetY: playerY, power: pwr } };
+            }
+            setTimeout(() => processResult(resultData), 1000);
+        }
+
+        function processResult(data) {
+            const kData = data.kicker; const gData = data.goalkeeper;
+            powerFill.style.width = kData.power + '%';
+
+            visuals.gkSVG.style.left = gData.targetX + 'px';
+            visuals.gkSVG.style.top = gData.targetY + 'px';
+            visuals.gkPath.setAttribute('d', PATH_DIVE);
+            if(gData.targetX < GOAL_W / 2) visuals.gkSVG.style.transform = 'translate(-50%, -50%) scaleX(-1)';
+            else visuals.gkSVG.style.transform = 'translate(-50%, -50%) scaleX(1)';
+
+            setTimeout(() => {
+                const targetBallLeft = kData.targetX + 50;
+                const targetBallTop = kData.targetY + 50;
+
+                visuals.ball.style.left = targetBallLeft + 'px';
+                visuals.ball.style.top = targetBallTop + 'px';
+                visuals.ball.style.transform = 'translate(-50%, -50%) scale(0.45) rotate(720deg)';
+
+                const dx = kData.targetX - gData.targetX;
+                const dy = kData.targetY - gData.targetY;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                
+                let isGoal = true;
+
+                if (kData.power < 10) {
+                    isGoal = false;
+                    visuals.ball.style.top = '300px'; 
+                    visuals.ball.style.transform = 'translate(-50%, -50%) scale(0.7) rotate(180deg)';
+                } else if (kData.power > 90) {
+                    isGoal = false; 
+                    visuals.ball.style.top = '-50px'; 
+                    visuals.ball.style.transform = 'translate(-50%, -50%) scale(0.3) rotate(1080deg)';
+                } else if (distance < HITBOX_RADIUS) { 
+                    isGoal = false; 
+                    setTimeout(() => {
+                        visuals.ball.style.transition = 'all 0.3s ease-out';
+                        visuals.ball.style.left = (gData.targetX > GOAL_W/2 ? targetBallLeft - 100 : targetBallLeft + 100) + 'px';
+                        visuals.ball.style.top = targetBallTop + 100 + 'px';
+                    }, 400); 
+                } else {
+                    isGoal = true;
+                    setTimeout(() => {
+                        document.getElementById('goal-net').style.transform = 'scale(1.05)';
+                        setTimeout(() => document.getElementById('goal-net').style.transform = 'scale(1)', 150);
+                    }, 450);
+                }
+
+                turnIndicator.innerText = isGoal ? "GOAL!" : "NO GOAL!";
+                turnIndicator.style.color = isGoal ? "#00ffcc" : "#ff0055";
+
+                // 스코어보드 업데이트
+                const isLeftKicking = (totalKicksTaken % 2 === 0);
+                if (isLeftKicking) historyLeft.push(isGoal);
+                else historyRight.push(isGoal);
+                totalKicksTaken++;
+                renderScoreboard();
+
+                // 승패 검사 로직
+                const winner = checkWinCondition();
+
+                setTimeout(() => {
+                    if (winner) {
+                        const winnerName = winner === 'left' ? document.getElementById('name-left').innerText : document.getElementById('name-right').innerText;
+                        turnIndicator.innerText = `경기 종료! ${winnerName} WIN!`;
+                        turnIndicator.style.color = "#fff";
+                        turnIndicator.style.textShadow = "0 0 20px #fff";
+                        
+                        if (isHost && currentRoomCode && db) {
+                            try { deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomCode)); } catch(e){}
+                        }
+                        
+                        setTimeout(resetToMenu, 5000);
+                    } else {
+                        currentRole = currentRole === 'kicker' ? 'goalkeeper' : 'kicker';
+                        setupRound();
+                    }
+                }, 3000);
+            }, 300);
+        }
+
+        // HTML 태그에서 호출되는 함수들을 window 객체에 명시적 연결
+        window.startSinglePlayer = startSinglePlayer;
+        window.handleJoinMultiplayer = handleJoinMultiplayer;
+        window.closeAlert = closeAlert;
+        window.leaveWaitingRoom = leaveWaitingRoom;
+
+    </script>
+</body>
+</html>
