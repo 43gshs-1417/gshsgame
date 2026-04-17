@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STELLAR EVOLUTION : 질량 기반 항성 진화 시뮬레이터</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@200;300;400;700&family=Space+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #020203;
+            --text-primary: #e0e0e0;
+            --accent: #ffffff;
+            --ui-border: rgba(255, 255, 255, 0.15);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Noto Serif KR', serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* 3D Canvas */
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* UI Overlays */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none; /* Let clicks pass through to UI elements */
+        }
+
+        /* Start Screen */
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(2, 2, 3, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 2s ease-in-out;
+            pointer-events: auto;
+        }
+
+        #start-screen h1 {
+            font-weight: 200;
+            font-size: 2.5rem;
+            letter-spacing: 0.5em;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        #start-screen p {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.9rem;
+            color: #888;
+            letter-spacing: 0.1em;
+            margin-bottom: 50px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid var(--ui-border);
+            padding-bottom: 10px;
+            margin-bottom: 40px;
+        }
+
+        .input-group input {
+            background: transparent;
+            border: none;
+            color: var(--accent);
+            font-family: 'Space Mono', monospace;
+            font-size: 3rem;
+            text-align: center;
+            width: 200px;
+            outline: none;
+        }
+
+        .input-group span {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.5rem;
+            color: #666;
+            margin-left: 10px;
+        }
+
+        button {
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--ui-border);
+            padding: 15px 40px;
+            font-family: 'Noto Serif KR', serif;
+            font-size: 1rem;
+            letter-spacing: 0.2em;
+            cursor: pointer;
+            transition: all 0.4s ease;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            background: var(--text-primary);
+            color: var(--bg-color);
+            border-color: var(--text-primary);
+        }
+
+        /* Documentary UI */
+        #doc-ui {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+            padding: 40px;
+            box-sizing: border-box;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-top: 1px solid var(--ui-border);
+            padding-top: 20px;
+        }
+
+        .info-panel {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.85rem;
+            color: #aaa;
+            letter-spacing: 0.05em;
+            line-height: 1.6;
+        }
+
+        .info-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        /* Subtitles */
+        .subtitle-container {
+            align-self: center;
+            text-align: center;
+            max-width: 800px;
+            margin-bottom: 50px;
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            font-weight: 300;
+            line-height: 1.8;
+            letter-spacing: 0.05em;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+            transform: translateY(10px);
+        }
+
+        .subtitle.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .stage-indicator {
+            position: absolute;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 20px;
+        }
+
+        .stage-dot {
+            width: 4px;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.5s;
+        }
+
+        .stage-dot.active {
+            background: #fff;
+            box-shadow: 0 0 10px #fff;
+            transform: scale(2);
+        }
+
+        .stage-label {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            transition: color 0.5s;
+        }
+        
+        .stage-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .stage-item.active .stage-label {
+            color: #fff;
+        }
+
+        #loading {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.8rem;
+            color: #555;
+            letter-spacing: 0.2em;
+        }
+
+        #fade-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #020203;
+            z-index: 50; /* Start screen 아래, doc-ui 위 */
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 4s ease-in-out; /* 4초간 매우 느리고 시네마틱하게 페이드 */
+        }
+    </style>
+
+    <!-- Import Three.js and Post-processing modules via ES Modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="overlay">
+        <div id="fade-overlay"></div>
+        <!-- Start Screen -->
+        <div id="start-screen">
+            <h1>Stellar Genesis</h1>
+            <p>OBSERVATION TARGET PARAMETERS</p>
+            <div class="input-group">
+                <input type="number" id="mass-input" min="0.01" max="100" step="0.01" value="1.00">
+                <span>M☉</span>
+            </div>
+            <button id="start-btn">관측 시작</button>
+            <div id="loading">시스템 초기화 중...</div>
+        </div>
+
+        <!-- Documentary UI -->
+        <div id="doc-ui">
+            <div class="top-bar">
+                <div class="info-panel">
+                    TARGET: <span class="info-value">SIMULATED ENTITY</span><br>
+                    MASS: <span class="info-value" id="ui-mass">1.00 M☉</span><br>
+                    CLASS: <span class="info-value" id="ui-class">UNKNOWN</span>
+                </div>
+                <div class="info-panel" style="text-align: right;">
+                    TIME ELAPSED<br>
+                    <span class="info-value" id="ui-time">0 YEARS</span>
+                </div>
+            </div>
+
+            <div class="stage-indicator" id="stage-indicator">
+                <!-- Dynamically populated -->
+            </div>
+
+            <div class="subtitle-container">
+                <div class="subtitle" id="subtitle-text"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Shaders for Procedural Star Generation ---
+        
+        // 3D Simplex Noise for Shaders
+        const noiseShader = `
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+            float snoise(vec3 v) {
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                vec3 i  = floor(v + dot(v, C.yyy));
+                vec3 x0 = v - i + dot(i, C.xxx);
+                vec3 g = step(x0.yzx, x0.xyz);
+                vec3 l = 1.0 - g;
+                vec3 i1 = min(g.xyz, l.zxy);
+                vec3 i2 = max(g.xyz, l.zxy);
+                vec3 x1 = x0 - i1 + C.xxx;
+                vec3 x2 = x0 - i2 + C.yyy;
+                vec3 x3 = x0 - D.yyy;
+                i = mod289(i);
+                vec4 p = permute(permute(permute(
+                            i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+                float n_ = 0.142857142857;
+                vec3 ns = n_ * D.wyz - D.xzx;
+                vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                vec4 x_ = floor(j * ns.z);
+                vec4 y_ = floor(j - 7.0 * x_);
+                vec4 x = x_ *ns.x + ns.yyyy;
+                vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                vec4 b0 = vec4(x.xy, y.xy);
+                vec4 b1 = vec4(x.zw, y.zw);
+                vec4 s0 = floor(b0)*2.0 + 1.0;
+                vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+                vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+                vec3 p0 = vec3(a0.xy,h.x);
+                vec3 p1 = vec3(a0.zw,h.y);
+                vec3 p2 = vec3(a1.xy,h.z);
+                vec3 p3 = vec3(a1.zw,h.w);
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+                vec4 m = max(0.5 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                m = m * m;
+                return 105.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+            }
+            float fbm(vec3 x) {
+                float v = 0.0;
+                float a = 0.5;
+                vec3 shift = vec3(100);
+                for (int i = 0; i < 5; ++i) {
+                    v += a * snoise(x);
+                    x = x * 2.0 + shift;
+                    a *= 0.5;
+                }
+                return v;
+            }
+        `;
+
+        const starVertexShader = `
+            ${noiseShader}
+            uniform float time;
+            uniform float noiseScale;
+            uniform float displacementIntensity;
+            varying vec2 vUv;
+            varying vec3 vPosition;
+            varying float vNoise;
+            varying vec3 vNormal;
+
+            void main() {
+                vUv = uv;
+                vNormal = normalize(normalMatrix * normal);
+                
+                // Calculate noise for displacement
+                vec3 noisePos = position * noiseScale + time * 0.2;
+                float n = fbm(noisePos);
+                vNoise = n;
+
+                // Displace vertices
+                vec3 newPosition = position + normal * n * displacementIntensity;
+                vPosition = newPosition;
+                
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+            }
+        `;
+
+        const starFragmentShader = `
+            ${noiseShader}
+            uniform vec3 colorBase;
+            uniform vec3 colorHot;
+            uniform float time;
+            varying vec2 vUv;
+            varying float vNoise;
+            varying vec3 vNormal;
+
+            void main() {
+                // Surface texture based on noise
+                float surfaceNoise = fbm(vec3(vUv * 10.0, time * 0.1));
+                
+                // Mix base and hot colors based on vertex displacement noise and surface noise
+                float mixRatio = smoothstep(-0.2, 0.8, vNoise) + surfaceNoise * 0.2;
+                vec3 finalColor = mix(colorBase, colorHot, clamp(mixRatio, 0.0, 1.0));
+                
+                // Fake fresnel for glowing edges
+                float intensity = 1.0 - dot(vNormal, vec3(0.0, 0.0, 1.0));
+                vec3 atmosphere = colorHot * pow(intensity, 2.0);
+                
+                gl_FragColor = vec4(finalColor + atmosphere, 1.0);
+            }
+        `;
+
+        const coronaVertexShader = `
+            varying vec3 vNormal;
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const coronaFragmentShader = `
+            uniform vec3 color;
+            uniform float power;
+            varying vec3 vNormal;
+            void main() {
+                float intensity = pow(0.65 - dot(vNormal, vec3(0, 0, 1.0)), power);
+                gl_FragColor = vec4(color, 1.0) * intensity;
+            }
+        `;
+
+        // --- Procedural Cinematic Audio Engine ---
+        class CinematicAudio {
+            constructor() {
+                this.initialized = false;
+            }
+            
+            init() {
+                if (this.initialized) return;
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                this.master = this.ctx.createGain();
+                this.master.gain.value = 0; // Start muted
+                
+                // Reverb (Convolver with generated noise impulse)
+                this.reverb = this.ctx.createConvolver();
+                const length = this.ctx.sampleRate * 4.0; 
+                const impulse = this.ctx.createBuffer(2, length, this.ctx.sampleRate);
+                for (let i = 0; i < 2; i++) {
+                    const channel = impulse.getChannelData(i);
+                    for (let j = 0; j < length; j++) {
+                        channel[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, 2);
+                    }
+                }
+                this.reverb.buffer = impulse;
+
+                // Add a lowpass filter to warm up the sound (거친 소리 제거)
+                this.filter = this.ctx.createBiquadFilter();
+                this.filter.type = 'lowpass';
+                this.filter.frequency.value = 800; // 따뜻한 공간감 형성
+                
+                this.master.connect(this.filter);
+                this.filter.connect(this.reverb);
+                this.reverb.connect(this.ctx.destination);
+                this.filter.connect(this.ctx.destination); // Mix dry/wet
+                
+                // Harmonious Space Pad (C minor add 9 화음으로 부드럽고 신비롭게)
+                // Root (베이스)
+                this.playTone('sine', 65.41, 0.4);  // C2
+                this.playTone('sine', 65.80, 0.2);  // C2 (살짝 엇갈리게 하여 풍성한 공간감)
+                
+                // Fifth (5도)
+                this.playTone('sine', 98.00, 0.25);  // G2
+                
+                // Minor Third (단 3도 - 우주의 쓸쓸함)
+                this.playTone('sine', 155.56, 0.15); // Eb3
+                
+                // Ninth (9도 - 신비로움 추가)
+                this.playTone('sine', 293.66, 0.08); // D4
+                
+                // High Shimmer (별빛의 반짝임)
+                this.playTone('sine', 783.99, 0.03); // G5
+                this.playTone('sine', 1244.51, 0.02); // Eb6
+
+                this.initialized = true;
+            }
+
+            playTone(type, freq, vol) {
+                const osc = this.ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.value = freq;
+                
+                const gain = this.ctx.createGain();
+                gain.gain.value = vol;
+                
+                // Slow LFO for volume (breathing effect)
+                const lfo = this.ctx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = Math.random() * 0.03 + 0.01; 
+                
+                const lfoGain = this.ctx.createGain();
+                lfoGain.gain.value = vol * 0.6;
+                
+                lfo.connect(lfoGain);
+                lfoGain.connect(gain.gain);
+                
+                osc.connect(gain);
+                gain.connect(this.master);
+                
+                osc.start();
+                lfo.start();
+            }
+
+            fadeIn() {
+                if (!this.initialized) this.init();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+                this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+                this.master.gain.setTargetAtTime(0.7, this.ctx.currentTime, 3.0);
+            }
+
+            fadeOut() {
+                if (!this.initialized) return;
+                this.master.gain.cancelScheduledValues(this.ctx.currentTime);
+                this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 4.0);
+            }
+        }
+
+        // --- Main Simulation Logic ---
+        class Simulation {
+            constructor() {
+                this.container = document.getElementById('canvas-container');
+                this.scene = new THREE.Scene();
+                this.scene.fog = new THREE.FogExp2(0x020203, 0.001);
+                
+                this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+                this.camera.position.set(0, 0, 100);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.container.appendChild(this.renderer.domElement);
+
+                // Post-processing
+                this.renderScene = new RenderPass(this.scene, this.camera);
+                this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+                
+                this.composer = new EffectComposer(this.renderer);
+                this.composer.addPass(this.renderScene);
+                this.composer.addPass(this.bloomPass);
+
+                this.clock = new THREE.Clock();
+                this.entities = {};
+                this.currentStage = -1;
+                this.timeline = [];
+                this.isPlaying = false;
+                this.isTransitioningToLobby = false;
+                
+                this.audio = new CinematicAudio(); // 오디오 엔진 초기화
+                
+                this.initBackground();
+                this.setupResize();
+                
+                document.getElementById('loading').style.display = 'none';
+            }
+
+            initBackground() {
+                // Starfield
+                const starsGeometry = new THREE.BufferGeometry();
+                const starsMaterial = new THREE.PointsMaterial({color: 0xFFFFFF, size: 0.5, sizeAttenuation: true, transparent: true, opacity: 0.8});
+                const starsVertices = [];
+                for(let i=0; i<5000; i++) {
+                    const x = THREE.MathUtils.randFloatSpread(2000);
+                    const y = THREE.MathUtils.randFloatSpread(2000);
+                    const z = THREE.MathUtils.randFloatSpread(2000) - 500;
+                    starsVertices.push(x, y, z);
+                }
+                starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+                this.entities.backgroundStars = new THREE.Points(starsGeometry, starsMaterial);
+                this.scene.add(this.entities.backgroundStars);
+            }
+
+            setupResize() {
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    this.composer.setSize(window.innerWidth, window.innerHeight);
+                });
+            }
+
+            // Object Generators
+            createStarMesh(radius, baseColor, hotColor) {
+                const geometry = new THREE.SphereGeometry(radius, 128, 128);
+                const material = new THREE.ShaderMaterial({
+                    vertexShader: starVertexShader,
+                    fragmentShader: starFragmentShader,
+                    uniforms: {
+                        time: { value: 0 },
+                        noiseScale: { value: 1.5 },
+                        displacementIntensity: { value: radius * 0.05 },
+                        colorBase: { value: new THREE.Color(baseColor) },
+                        colorHot: { value: new THREE.Color(hotColor) }
+                    }
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+
+                // Corona
+                const coronaGeo = new THREE.SphereGeometry(radius * 1.2, 64, 64);
+                const coronaMat = new THREE.ShaderMaterial({
+                    vertexShader: coronaVertexShader,
+                    fragmentShader: coronaFragmentShader,
+                    uniforms: {
+                        color: { value: new THREE.Color(hotColor) },
+                        power: { value: 3.0 }
+                    },
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.BackSide,
+                    transparent: true,
+                    depthWrite: false
+                });
+                const corona = new THREE.Mesh(coronaGeo, coronaMat);
+                mesh.add(corona);
+                
+                return mesh;
+            }
+
+            createProtostarCloud() {
+                const geo = new THREE.BufferGeometry();
+                const count = 10000;
+                const pos = new Float32Array(count * 3);
+                const colors = new Float32Array(count * 3);
+                const color = new THREE.Color(0xaa44ff);
+                
+                for(let i=0; i<count*3; i+=3) {
+                    const r = 80 * Math.random();
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    pos[i] = r * Math.sin(phi) * Math.cos(theta);
+                    pos[i+1] = r * Math.sin(phi) * Math.sin(theta);
+                    pos[i+2] = r * Math.cos(phi);
+                    
+                    colors[i] = color.r; colors[i+1] = color.g; colors[i+2] = color.b;
+                }
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                
+                const mat = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
+                return new THREE.Points(geo, mat);
+            }
+
+            createBlackHole() {
+                const group = new THREE.Group();
+                
+                // Event Horizon (Pure Black Sphere)
+                const bhGeo = new THREE.SphereGeometry(5, 64, 64);
+                const bhMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                const bh = new THREE.Mesh(bhGeo, bhMat);
+                group.add(bh);
+
+                // Accretion Disk
+                const diskGeo = new THREE.TorusGeometry(12, 4, 16, 100);
+                const diskMat = new THREE.ShaderMaterial({
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+                    `,
+                    fragmentShader: `
+                        uniform float time;
+                        varying vec2 vUv;
+                        ${noiseShader}
+                        void main() {
+                            float n = fbm(vec3(vUv.x * 20.0 + time, vUv.y * 2.0, time*0.5));
+                            vec3 color = mix(vec3(1.0, 0.3, 0.0), vec3(1.0, 0.9, 0.5), n);
+                            float alpha = smoothstep(0.1, 0.8, n) * sin(vUv.y * 3.1415);
+                            gl_FragColor = vec4(color * 2.0, alpha);
+                        }
+                    `,
+                    uniforms: { time: { value: 0 } },
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+                const disk = new THREE.Mesh(diskGeo, diskMat);
+                disk.rotation.x = Math.PI / 2.2;
+                group.add(disk);
+
+                return group;
+            }
+
+            createPulsar() {
+                const group = new THREE.Group();
+                
+                // Core (고도로 압축된 빛나는 구체)
+                const coreGeo = new THREE.SphereGeometry(1.5, 64, 64);
+                const coreMat = new THREE.MeshBasicMaterial({ color: 0xaaddff }); 
+                const core = new THREE.Mesh(coreGeo, coreMat);
+                group.add(core);
+
+                // Beams (양극단으로 뿜어져 나오는 제트, 셰이더로 페이드아웃 효과)
+                const beamGeo = new THREE.CylinderGeometry(0.01, 8, 200, 32, 1, true);
+                beamGeo.translate(0, 100, 0); // 중심축을 위로 이동
+                const beamMat = new THREE.ShaderMaterial({
+                    vertexShader: `
+                        varying vec2 vUv;
+                        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+                    `,
+                    fragmentShader: `
+                        uniform vec3 color;
+                        varying vec2 vUv;
+                        void main() {
+                            // vUv.y 가 0(아래)에 가까울수록 진하고 1(위)에 가까울수록 투명
+                            float alpha = pow(1.0 - vUv.y, 4.0);
+                            gl_FragColor = vec4(color, alpha);
+                        }
+                    `,
+                    uniforms: { color: { value: new THREE.Color(0x88bbff) } },
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                });
+                
+                const beam1 = new THREE.Mesh(beamGeo, beamMat);
+                const beam2 = new THREE.Mesh(beamGeo, beamMat);
+                beam2.rotation.x = Math.PI; // 아래로 향하게
+                
+                group.add(beam1);
+                group.add(beam2);
+
+                // Magnetic field / Accretion ring (빠르게 회전하는 자기장/원반 형태)
+                const ringGeo = new THREE.TorusGeometry(3.5, 0.05, 16, 100);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0x5588ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+                const ring1 = new THREE.Mesh(ringGeo, ringMat);
+                ring1.rotation.x = Math.PI / 2;
+                
+                const ringGeo2 = new THREE.TorusGeometry(5, 0.02, 16, 100);
+                const ring2 = new THREE.Mesh(ringGeo2, ringMat);
+                ring2.rotation.x = Math.PI / 2;
+
+                group.add(ring1);
+                group.add(ring2);
+                
+                return group;
+            }
+
+            createSupernova(isHypernova = false) {
+                const group = new THREE.Group();
+
+                // 1. GPU 기반 파티클 잔해 (Debris)
+                const count = isHypernova ? 150000 : 80000;
+                const geo = new THREE.BufferGeometry();
+                const pos = new Float32Array(count * 3);
+                const vel = new Float32Array(count * 3);
+                const sizes = new Float32Array(count);
+                const colors = new Float32Array(count * 3);
+                
+                // 질량에 따른 폭발 색상 팔레트
+                const palette = isHypernova 
+                    ? [new THREE.Color(0x5500ff), new THREE.Color(0xaa22ff), new THREE.Color(0xffffff), new THREE.Color(0x00aaff)] // 극초신성: 보라/시안/화이트
+                    : [new THREE.Color(0xff4411), new THREE.Color(0xffaa22), new THREE.Color(0x3388ff), new THREE.Color(0xffffff)]; // 초신성: 붉은/오렌지/푸른빛
+
+                for(let i=0; i<count; i++) {
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
+                    const r = Math.random() * 2; // 초기에는 중앙에 밀집
+                    
+                    pos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+                    pos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+                    pos[i*3+2] = r * Math.cos(phi);
+                    
+                    const speedBase = isHypernova ? 250 : 150;
+                    const speed = (Math.random() * 0.9 + 0.1) * speedBase; // 중심에서 바깥으로 뻗어나가는 속도
+                    vel[i*3] = speed * Math.sin(phi) * Math.cos(theta);
+                    vel[i*3+1] = speed * Math.sin(phi) * Math.sin(theta);
+                    vel[i*3+2] = speed * Math.cos(phi);
+                    
+                    sizes[i] = Math.random() * 2.5 + 0.5;
+
+                    const c = palette[Math.floor(Math.random() * palette.length)];
+                    colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+                }
+                
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                geo.setAttribute('velocity', new THREE.BufferAttribute(vel, 3));
+                geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+                geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+                const particleMat = new THREE.ShaderMaterial({
+                    uniforms: { time: { value: 0.0 } },
+                    vertexShader: `
+                        uniform float time;
+                        attribute vec3 velocity;
+                        attribute float aSize;
+                        attribute vec3 aColor;
+                        varying vec3 vColor;
+                        varying float vAlpha;
+                        void main() {
+                            vColor = aColor;
+                            // 비선형 폭발 (처음엔 빠르고 갈수록 감속)
+                            float moveTime = pow(time, 0.5); 
+                            vec3 newPos = position + velocity * moveTime;
+                            vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0);
+                            gl_Position = projectionMatrix * mvPosition;
+                            // 거리에 비례한 크기 조절 및 시간에 따른 소멸
+                            gl_PointSize = aSize * (1.0 - time) * (300.0 / -mvPosition.z);
+                            vAlpha = 1.0 - pow(time, 2.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        varying vec3 vColor;
+                        varying float vAlpha;
+                        void main() {
+                            float dist = length(gl_PointCoord - vec2(0.5));
+                            if (dist > 0.5) discard;
+                            float intensity = pow(1.0 - (dist * 2.0), 1.5);
+                            gl_FragColor = vec4(vColor * intensity * 2.0, vAlpha * intensity);
+                        }
+                    `,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+
+                const particles = new THREE.Points(geo, particleMat);
+                group.add(particles);
+
+                // 2. 구형 충격파 (Shockwave Shell)
+                const swGeo = new THREE.SphereGeometry(1, 64, 64);
+                const swMat = new THREE.ShaderMaterial({
+                    uniforms: { 
+                        time: { value: 0.0 },
+                        baseColor: { value: palette[0] }
+                    },
+                    vertexShader: `
+                        varying vec3 vNormal;
+                        void main() {
+                            vNormal = normalize(normalMatrix * normal);
+                            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform float time;
+                        uniform vec3 baseColor;
+                        varying vec3 vNormal;
+                        void main() {
+                            // 가장자리만 빛나는 Fresnel 효과
+                            float intensity = pow(0.6 - dot(vNormal, vec3(0,0,1.0)), 3.0);
+                            float alpha = (1.0 - time) * 2.0; 
+                            gl_FragColor = vec4(baseColor * 3.0, clamp(alpha * intensity, 0.0, 1.0));
+                        }
+                    `,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+                const shockwave = new THREE.Mesh(swGeo, swMat);
+                group.add(shockwave);
+
+                return group;
+            }
+
+            // Memory Management & Scene Reset
+            disposeEntity(entityName) {
+                if (this.entities[entityName]) {
+                    const obj = this.entities[entityName];
+                    this.scene.remove(obj);
+                    obj.traverse((child) => {
+                        if (child.isMesh || child.isPoints) {
+                            if (child.geometry) child.geometry.dispose();
+                            if (child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(m => m.dispose());
+                                } else {
+                                    child.material.dispose();
+                                }
+                            }
+                        }
+                    });
+                    this.entities[entityName] = null;
+                }
+            }
+
+            resetSimulation() {
+                this.disposeEntity('cloud');
+                this.disposeEntity('star');
+                this.disposeEntity('supernova');
+                this.disposeEntity('pulsar');
+                this.disposeEntity('blackhole');
+
+                this.bloomPass.strength = 1.5;
+                this.camera.position.set(0, 0, 100);
+
+                document.getElementById('doc-ui').style.opacity = '0';
+                document.getElementById('subtitle-text').classList.remove('active');
+                
+                this.currentStage = -1;
+                this.timeline = [];
+                this.isPlaying = false;
+            }
+
+            returnToLobbySequence() {
+                const fadeOverlay = document.getElementById('fade-overlay');
+                const docUI = document.getElementById('doc-ui');
+                
+                // UI를 서서히 끄고 화면을 완전한 어둠(블랙)으로 페이드
+                docUI.style.opacity = '0';
+                fadeOverlay.style.opacity = '1';
+                
+                this.audio.fadeOut(); // 음악 서서히 페이드 아웃
+
+                // 4초 뒤 어둠 속에서 씬을 초기화하고 로비 화면 띄우기
+                setTimeout(() => {
+                    this.resetSimulation();
+                    
+                    const startScreen = document.getElementById('start-screen');
+                    startScreen.style.display = 'flex';
+                    
+                    // display가 flex로 적용될 아주 짧은 텀을 준 뒤 페이드 인
+                    setTimeout(() => {
+                        startScreen.style.opacity = '1';
+                        fadeOverlay.style.opacity = '0'; // 어둠 걷히기
+                        this.isTransitioningToLobby = false;
+                    }, 100);
+                }, 4000); 
+            }
+
+            // Logic Construction based on mass
+            generateEvolutionTimeline(mass) {
+                this.timeline = [];
+                let t = 0;
+                const addEvent = (duration, state, title, text, uiClass, updateFn) => {
+                    this.timeline.push({ startTime: t, duration, state, title, text, uiClass, updateFn });
+                    t += duration;
+                };
+
+                // 1. 성운 (Protostar Cloud) - 공통
+                addEvent(6, 'protostar', '원시성 수축', '거대한 분자 구름이 자체 중력에 의해 붕괴하며 회전하기 시작합니다. 중심부의 온도와 압력이 급격히 상승합니다.', '원시 분자운', (p) => {
+                    if(!this.entities.cloud) {
+                        this.entities.cloud = this.createProtostarCloud();
+                        this.scene.add(this.entities.cloud);
+                        this.bloomPass.strength = 0.5;
+                        this.camera.position.z = 150;
+                    }
+                    // 수축 애니메이션
+                    const positions = this.entities.cloud.geometry.attributes.position.array;
+                    for(let i=0; i<positions.length; i++) {
+                        positions[i] *= 0.99; // shrink
+                    }
+                    this.entities.cloud.geometry.attributes.position.needsUpdate = true;
+                    this.entities.cloud.rotation.y += 0.01;
+                });
+
+                if (mass < 0.08) {
+                    // 갈색 왜성 (Brown Dwarf)
+                    addEvent(8, 'main_sequence', '갈색 왜성', '질량이 부족하여 중심부에서 수소 핵융합을 시작하지 못했습니다. 열을 발산하며 서서히 식어가는 실패한 별입니다.', '갈색 왜성', (p) => {
+                        this.transitionToStar(p, 8, 0x4a0e1c, 0x8a1c31, 0.2);
+                    });
+                    addEvent(10, 'remnant', '영원한 냉각', '수십억 년에 걸쳐 희미한 빛마저 잃고 우주의 차가운 배경 속으로 동화되어 갑니다.', '어두운 갈색 왜성', (p) => {
+                        if(this.entities.star) {
+                            this.entities.star.material.uniforms.colorHot.value.lerp(new THREE.Color(0x110000), 0.01);
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 0.0, 0.05);
+                        }
+                    });
+                } 
+                else if (mass < 0.8) {
+                    // 적색 왜성 (Red Dwarf)
+                    addEvent(10, 'main_sequence', '주계열성 (적색 왜성)', '안정적인 수소 핵융합이 시작되었습니다. 표면 온도가 낮아 붉은 빛을 띠며, 우주에서 가장 오래 생존하는 별의 형태입니다.', '적색 왜성', (p) => {
+                        this.transitionToStar(p, 12, 0x550000, 0xff2200, 0.8);
+                    });
+                    addEvent(10, 'remnant', '백색 왜성으로의 전환', '수조 년이라는 아득한 시간 동안 연료를 극히 천천히 소모한 뒤, 폭발 없이 고요하게 백색 왜성으로 오그라듭니다.', '백색 왜성', (p) => {
+                        if(this.entities.star) {
+                            const targetScale = 0.2;
+                            this.entities.star.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.02);
+                            this.entities.star.material.uniforms.colorBase.value.lerp(new THREE.Color(0xffffff), 0.02);
+                            this.entities.star.material.uniforms.colorHot.value.lerp(new THREE.Color(0xddffff), 0.02);
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 2.0, 0.05);
+                        }
+                    });
+                }
+                else if (mass < 8) {
+                    // 태양형 별 (Sun-like)
+                    addEvent(10, 'main_sequence', '주계열성 (황색 왜성)', '현재 우리 태양의 모습입니다. 중심핵에서 초당 수백만 톤의 수소를 헬륨으로 변환하며 안정적인 빛과 열을 뿜어냅니다.', '황색 왜성', (p) => {
+                        this.transitionToStar(p, 15, 0xff8800, 0xffeebb, 1.2);
+                    });
+                    addEvent(10, 'red_giant', '적색 거성', '중심핵의 수소가 고갈되면서 외곽층이 팽창합니다. 별의 크기가 수십 배로 커지며 표면 온도는 내려가 붉게 보입니다.', '적색 거성', (p) => {
+                        if(this.entities.star) {
+                            const targetScale = 3.5;
+                            this.entities.star.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.01);
+                            this.entities.star.material.uniforms.colorBase.value.lerp(new THREE.Color(0xaa1100), 0.05);
+                            this.entities.star.material.uniforms.colorHot.value.lerp(new THREE.Color(0xff4400), 0.05);
+                            this.entities.star.material.uniforms.displacementIntensity.value = 15.0 * 3.5 * 0.05; // increase turbulence
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 1.5, 0.02);
+                            this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 200, 0.01);
+                        }
+                    });
+                    addEvent(8, 'planetary_nebula', '행성상 성운', '불안정한 맥동 끝에 외곽층을 우주 공간으로 날려 보냅니다. 아름다운 가스 구름이 형성됩니다.', '행성상 성운 / 백색 왜성', (p) => {
+                        // Fade star, expand a shell
+                        if(this.entities.star) {
+                            this.entities.star.children[0].material.opacity = THREE.MathUtils.lerp(this.entities.star.children[0].material.opacity, 0, 0.05);
+                            this.entities.star.scale.lerp(new THREE.Vector3(0.1, 0.1, 0.1), 0.05); // shrink core
+                            this.entities.star.material.uniforms.colorBase.value.lerp(new THREE.Color(0xffffff), 0.1);
+                            this.entities.star.material.uniforms.colorHot.value.lerp(new THREE.Color(0xaaaaff), 0.1);
+                        }
+                    });
+                    addEvent(10, 'remnant', '백색 왜성', '남은 중심핵은 극도로 밀도가 높은 백색 왜성이 됩니다. 더 이상의 핵융합 없이 남은 열만을 방출하며 우주의 보석처럼 빛납니다.', '백색 왜성', (p) => {
+                        this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 2.5, 0.05);
+                        this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 50, 0.02);
+                    });
+                }
+                else if (mass < 25) {
+                    // 대질량 별
+                    addEvent(8, 'main_sequence', '청색 주계열성', '질량이 커서 압력과 온도가 극도로 높습니다. 연료를 매우 빠르게 소모하며 강렬한 푸른 빛을 발산합니다.', '청색 주계열성', (p) => {
+                        this.transitionToStar(p, 25, 0x0044ff, 0xaaddff, 2.0);
+                    });
+                    addEvent(8, 'red_supergiant', '적색 초거성', '연료가 고갈되며 엄청난 크기로 팽창합니다. 중심부에서는 탄소, 네온, 산소, 규소를 거쳐 철까지 핵융합이 진행됩니다.', '적색 초거성', (p) => {
+                        if(this.entities.star) {
+                            const targetScale = 5.0;
+                            this.entities.star.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.02);
+                            this.entities.star.material.uniforms.colorBase.value.lerp(new THREE.Color(0x660000), 0.1);
+                            this.entities.star.material.uniforms.colorHot.value.lerp(new THREE.Color(0xff2200), 0.1);
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 1.8, 0.05);
+                            this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, 250, 0.02);
+                        }
+                    });
+                    addEvent(6, 'supernova', '초신성 폭발 (Type II)', '중심핵이 철로 채워지면 더 이상 에너지를 내지 못하고 중력 붕괴를 일으킵니다. 별을 구성하던 물질이 초속 수만 km로 튕겨 나가는 우주 최대의 불꽃놀이입니다.', '초신성', (p) => {
+                        if(!this.entities.supernova) {
+                            this.entities.supernova = this.createSupernova(false);
+                            this.scene.add(this.entities.supernova);
+                            if(this.entities.star) this.scene.remove(this.entities.star);
+                        }
+                        
+                        const sn = this.entities.supernova;
+                        // 셰이더 시간 업데이트 (0.0 ~ 1.0)
+                        sn.children[0].material.uniforms.time.value = p; 
+                        sn.children[1].material.uniforms.time.value = p; 
+
+                        // 충격파 팽창
+                        const shockScale = 1.0 + p * 180.0;
+                        sn.children[1].scale.set(shockScale, shockScale, shockScale);
+
+                        // 폭발 순간 강력한 섬광
+                        if (p < 0.15) {
+                            this.bloomPass.strength = THREE.MathUtils.lerp(15.0, 2.0, p / 0.15);
+                        } else {
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 1.5, 0.05);
+                        }
+                    });
+                    addEvent(10, 'remnant', '중성자별 (펄서)', '전자를 원자핵 속으로 밀어넣을 만큼 강력한 중력 붕괴가 일어나, 도시만 한 크기에 태양의 질량이 압축된 중성자별이 탄생했습니다. 엄청난 속도로 자전하며 전자기파를 방출합니다.', '중성자별 (펄서)', (p) => {
+                        if(p < 0.1 && !this.entities.pulsar) {
+                            this.entities.pulsar = this.createPulsar();
+                            this.scene.add(this.entities.pulsar);
+                            this.camera.position.z = 40;
+                        }
+                        if(this.entities.pulsar) {
+                            this.entities.pulsar.rotation.y += 0.5; // 더 빠른 자전
+                            this.entities.pulsar.rotation.z = Math.PI / 6; // tilt
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 4.0, 0.05);
+                        }
+                    });
+                }
+                else {
+                    // 극초거대 질량 별 (Hypermassive)
+                    addEvent(8, 'main_sequence', '청색 초거성 (O형 강렬성)', '상상을 초월하는 질량으로 인해 표면 온도가 수만 도에 달합니다. 치명적인 자외선과 항성풍을 뿜어냅니다.', '청색 초거성', (p) => {
+                        this.transitionToStar(p, 35, 0x0011ff, 0xffffff, 3.0);
+                    });
+                    addEvent(8, 'wolf_rayet', '볼프-레이에 별 (Wolf-Rayet)', '별이 너무 밝고 뜨거워 자신의 외곽층을 강력한 항성풍으로 날려버리며 알몸의 핵을 드러냅니다. 극도로 불안정한 상태입니다.', '볼프-레이에 별', (p) => {
+                        if(this.entities.star) {
+                            this.entities.star.material.uniforms.displacementIntensity.value = 35 * 0.15; // violent boiling
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 4.0, 0.02);
+                            this.entities.star.material.uniforms.colorBase.value.lerp(new THREE.Color(0xaa00ff), 0.05);
+                        }
+                    });
+                    addEvent(6, 'supernova', '극초신성 (Hypernova)', '일반적인 초신성의 수십 배에 달하는 에너지를 방출하며 중심핵이 무한히 붕괴합니다.', '극초신성', (p) => {
+                        if(!this.entities.supernova) {
+                            this.entities.supernova = this.createSupernova(true);
+                            this.scene.add(this.entities.supernova);
+                            if(this.entities.star) this.scene.remove(this.entities.star);
+                        }
+                        
+                        const sn = this.entities.supernova;
+                        sn.children[0].material.uniforms.time.value = p; 
+                        sn.children[1].material.uniforms.time.value = p; 
+
+                        const shockScale = 1.0 + p * 280.0; // 극초신성은 더 거대하게
+                        sn.children[1].scale.set(shockScale, shockScale, shockScale);
+
+                        if (p < 0.15) {
+                            this.bloomPass.strength = THREE.MathUtils.lerp(25.0, 1.0, p / 0.15);
+                        } else {
+                            this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, 0.5, 0.05); // fade dark for BH
+                        }
+                    });
+                    addEvent(12, 'remnant', '블랙홀 (Black Hole)', '빛조차 빠져나올 수 없는 시공간의 특이점. 주변의 물질을 집어삼키며 형성된 강착 원반이 극한의 마찰열로 X선을 뿜어냅니다.', '블랙홀', (p) => {
+                        if(p < 0.1 && !this.entities.blackhole) {
+                            this.entities.blackhole = this.createBlackHole();
+                            this.scene.add(this.entities.blackhole);
+                            this.camera.position.z = 60;
+                            this.bloomPass.strength = 2.5;
+                        }
+                        if(this.entities.blackhole) {
+                            // Rotate accretion disk
+                            this.entities.blackhole.children[1].rotation.z -= 0.05;
+                            // Update shader time for disk
+                            this.entities.blackhole.children[1].material.uniforms.time.value += 0.05;
+                        }
+                    });
+                }
+
+                // Build UI Indicators
+                const indicatorContainer = document.getElementById('stage-indicator');
+                indicatorContainer.innerHTML = '';
+                this.timeline.forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'stage-item';
+                    div.id = `stage-item-${index}`;
+                    div.innerHTML = `
+                        <span class="stage-label">${item.title}</span>
+                        <div class="stage-dot" id="stage-dot-${index}"></div>
+                    `;
+                    indicatorContainer.appendChild(div);
+                });
+            }
+
+            transitionToStar(progress, radius, baseHex, hotHex, bloom) {
+                if(this.entities.cloud) {
+                    this.scene.remove(this.entities.cloud);
+                    this.entities.cloud = null;
+                }
+                if(!this.entities.star) {
+                    this.entities.star = this.createStarMesh(radius, baseHex, hotHex);
+                    this.scene.add(this.entities.star);
+                    this.entities.star.scale.set(0.01, 0.01, 0.01);
+                }
+
+                // Scale up
+                if(this.entities.star.scale.x < 1.0) {
+                    this.entities.star.scale.lerp(new THREE.Vector3(1,1,1), 0.05);
+                }
+                this.bloomPass.strength = THREE.MathUtils.lerp(this.bloomPass.strength, bloom, 0.05);
+            }
+
+            start(mass) {
+                document.getElementById('start-screen').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('start-screen').style.display = 'none';
+                    document.getElementById('doc-ui').style.opacity = '1';
+                }, 2000);
+
+                document.getElementById('ui-mass').innerText = `${mass.toFixed(2)} M☉`;
+                
+                this.audio.fadeIn(); // 관측 시작 시 음악 페이드 인
+                
+                this.generateEvolutionTimeline(mass);
+                this.isPlaying = true;
+                this.clock.start();
+                this.animate();
+            }
+
+            updateUI(stageIndex, timeElapsed) {
+                if (this.currentStage !== stageIndex) {
+                    this.currentStage = stageIndex;
+                    const item = this.timeline[stageIndex];
+                    
+                    // Update Class UI
+                    document.getElementById('ui-class').innerText = item.uiClass;
+
+                    // Subtitle fade out/in
+                    const subEl = document.getElementById('subtitle-text');
+                    subEl.classList.remove('active');
+                    setTimeout(() => {
+                        subEl.innerText = item.text;
+                        subEl.classList.add('active');
+                    }, 500);
+
+                    // Indicators
+                    document.querySelectorAll('.stage-item').forEach(el => el.classList.remove('active'));
+                    document.querySelectorAll('.stage-dot').forEach(el => el.classList.remove('active'));
+                    document.getElementById(`stage-item-${stageIndex}`).classList.add('active');
+                    document.getElementById(`stage-dot-${stageIndex}`).classList.add('active');
+                }
+
+                // Fake time calculation based on stage
+                let displayTime = "0 YEARS";
+                if(stageIndex >= 1) {
+                    if(this.timeline[stageIndex].state === 'main_sequence') displayTime = "10,000 YEARS";
+                    else if(this.timeline[stageIndex].state.includes('red') || this.timeline[stageIndex].state === 'wolf_rayet') displayTime = "4 BILLION YEARS";
+                    else if(this.timeline[stageIndex].state === 'planetary_nebula') displayTime = "4.02 BILLION YEARS";
+                    else if(this.timeline[stageIndex].state === 'supernova') displayTime = "4.05 BILLION YEARS (CRITICAL)";
+                    else if(this.timeline[stageIndex].state === 'remnant') displayTime = "10 BILLION+ YEARS";
+                    else displayTime = "UNKNOWN";
+                }
+                document.getElementById('ui-time').innerText = displayTime;
+            }
+
+            animate() {
+                if (!this.isPlaying) return;
+                requestAnimationFrame(this.animate.bind(this));
+
+                const dt = this.clock.getDelta();
+                const elapsedTime = this.clock.getElapsedTime();
+
+                // Slow background rotation
+                if(this.entities.backgroundStars) {
+                    this.entities.backgroundStars.rotation.y += 0.0005;
+                }
+
+                // Star surface animation
+                if (this.entities.star) {
+                    this.entities.star.rotation.y += 0.002;
+                    this.entities.star.material.uniforms.time.value = elapsedTime;
+                }
+
+                // Timeline logic
+                let currentTimeInTimeline = elapsedTime;
+                let activeStageIndex = -1;
+                let currentStageProgress = 0;
+
+                for (let i = 0; i < this.timeline.length; i++) {
+                    const stage = this.timeline[i];
+                    if (currentTimeInTimeline >= stage.startTime && currentTimeInTimeline < stage.startTime + stage.duration) {
+                        activeStageIndex = i;
+                        currentStageProgress = (currentTimeInTimeline - stage.startTime) / stage.duration;
+                        stage.updateFn(currentStageProgress);
+                        break;
+                    }
+                }
+
+                // End of simulation
+                if (activeStageIndex === -1 && currentTimeInTimeline > this.timeline[this.timeline.length-1].startTime) {
+                    activeStageIndex = this.timeline.length - 1;
+                    const lastStage = this.timeline[activeStageIndex];
+                    lastStage.updateFn(1.0); // keep final state
+
+                    // 마지막 상태에서 8초 동안 우주의 적막을 감상한 뒤 로비로 돌아감
+                    if (currentTimeInTimeline > lastStage.startTime + lastStage.duration + 8) {
+                        if (!this.isTransitioningToLobby) {
+                            this.isTransitioningToLobby = true;
+                            this.returnToLobbySequence();
+                        }
+                    }
+                }
+
+                if (activeStageIndex !== -1) {
+                    this.updateUI(activeStageIndex, elapsedTime);
+                }
+
+                // Slight camera drift for cinematic feel
+                this.camera.position.x = Math.sin(elapsedTime * 0.1) * 5;
+                this.camera.position.y = Math.cos(elapsedTime * 0.1) * 5;
+                this.camera.lookAt(0, 0, 0);
+
+                this.composer.render();
+            }
+        }
+
+        // --- Initialization ---
+        window.onload = () => {
+            const sim = new Simulation();
+            
+            document.getElementById('start-btn').addEventListener('click', () => {
+                let val = parseFloat(document.getElementById('mass-input').value);
+                if(isNaN(val) || val <= 0) val = 1.00;
+                if(val > 100) val = 100.00;
+                sim.start(val);
+            });
+        };
+    </script>
+</body>
+</html>
