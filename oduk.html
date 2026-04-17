@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오둑 (Oduk) - 하이브리드 보드게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;700;900&display=swap');
+        
+        body {
+            background-color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Pretendard', sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .board {
+            background-color: #e3a857;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2), inset 0 0 60px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            position: relative;
+            cursor: pointer;
+            touch-action: none;
+            border: 3px solid #3d2b1f;
+        }
+        .grid-line {
+            stroke: #3d2b1f;
+            stroke-width: 1.2;
+            stroke-opacity: 0.8;
+        }
+        .star-point {
+            fill: #3d2b1f;
+        }
+        .stone-black {
+            fill: #111111;
+            filter: drop-shadow(2px 4px 4px rgba(0,0,0,0.4));
+        }
+        .stone-white {
+            fill: #ffffff;
+            filter: drop-shadow(2px 4px 4px rgba(0,0,0,0.2));
+        }
+        .last-move-marker {
+            fill: #ef4444;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { r: 3; opacity: 1; }
+            50% { r: 5; opacity: 0.6; }
+            100% { r: 3; opacity: 1; }
+        }
+        /* 단수 강조 효과 */
+        .atari-marker {
+            stroke: #facc15;
+            stroke-width: 3;
+            fill: none;
+            animation: atari-pulse 1s infinite;
+        }
+        @keyframes atari-pulse {
+            0% { stroke-opacity: 0.4; stroke-width: 2; }
+            50% { stroke-opacity: 1; stroke-width: 4; }
+            100% { stroke-opacity: 0.4; stroke-width: 2; }
+        }
+        .forbidden-x {
+            stroke: #dc2626;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+        .active-tab {
+            background-color: #1e293b !important;
+            color: white !important;
+        }
+        .win-candidate {
+            stroke: #10b981;
+            stroke-width: 4;
+            fill: none;
+            animation: win-pulse 1.2s infinite;
+        }
+        @keyframes win-pulse {
+            0% { stroke-width: 2; opacity: 0.4; }
+            50% { stroke-width: 6; opacity: 1; }
+            100% { stroke-width: 2; opacity: 0.4; }
+        }
+        .win-rate-wrapper {
+            background: white;
+            padding: 16px;
+            border-radius: 20px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            border: 1px solid #f1f5f9;
+        }
+        .win-rate-bar-container {
+            width: 100%;
+            height: 14px;
+            background-color: #f1f5f9;
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #win-rate-black {
+            height: 100%;
+            background: linear-gradient(90deg, #000, #333);
+            transition: width 1s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        #win-rate-white {
+            height: 100%;
+            background: linear-gradient(90deg, #e2e8f0, #fff);
+            transition: width 1s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="mb-6 text-center">
+        <h1 class="text-5xl font-black text-slate-900 mb-2 tracking-tighter italic uppercase">Oduk</h1>
+        <div class="h-1 w-12 bg-slate-900 mx-auto rounded-full"></div>
+    </div>
+
+    <!-- 승률 분석 패널 -->
+    <div class="w-full max-w-[560px] mb-6 px-2">
+        <div class="win-rate-wrapper">
+            <div class="flex justify-between items-end mb-3 font-bold">
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-400 uppercase tracking-widest">Black Win Rate</span>
+                    <span id="black-rate-text" class="text-2xl text-slate-900 leading-none">50%</span>
+                </div>
+                <div class="text-[10px] text-indigo-500 font-black animate-pulse">실시간 분석 중</div>
+                <div class="flex flex-col items-end">
+                    <span class="text-[10px] text-slate-400 uppercase tracking-widest">White Win Rate</span>
+                    <span id="white-rate-text" class="text-2xl text-slate-500 leading-none">50%</span>
+                </div>
+            </div>
+            <div class="win-rate-bar-container">
+                <div id="win-rate-black" style="width: 50%;"></div>
+                <div id="win-rate-white" style="width: 50%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모드 선택 -->
+    <div class="flex mb-6 bg-slate-200/50 p-1.5 rounded-2xl border border-slate-200">
+        <button id="mode-pvp" onclick="setGameMode('pvp')" class="px-8 py-2.5 rounded-xl font-bold text-slate-500 transition-all active-tab">PvP 모드</button>
+        <button id="mode-pve" onclick="setGameMode('pve')" class="px-8 py-2.5 rounded-xl font-bold text-slate-500 transition-all">AI 대결</button>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-8 items-center lg:items-start p-2">
+        <!-- 게임 보드 영역 -->
+        <div class="relative group">
+            <svg id="game-board" class="board" width="560" height="560" viewBox="0 0 560 560"></svg>
+            
+            <div id="status-overlay" class="absolute inset-0 flex items-center justify-center bg-slate-900/40 backdrop-blur-md hidden rounded-lg transition-all z-50">
+                <div class="bg-white p-12 rounded-3xl shadow-2xl text-center transform scale-110 border border-slate-100">
+                    <div id="winner-icon" class="text-6xl mb-4">👑</div>
+                    <h2 id="winner-text" class="text-3xl font-black mb-8 text-slate-800"></h2>
+                    <button onclick="resetGame()" class="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl hover:-translate-y-1">새 게임 시작</button>
+                </div>
+            </div>
+
+            <div id="ai-loading" class="absolute top-6 left-1/2 -translate-x-1/2 bg-white/95 px-5 py-2 rounded-full shadow-xl text-sm font-bold text-slate-800 hidden items-center gap-3 border border-slate-200">
+                <span class="flex h-2 w-2 relative">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                </span>
+                AI가 수 읽기 진행 중...
+            </div>
+        </div>
+
+        <!-- 사이드 컨트롤러 -->
+        <div class="w-full max-w-md lg:w-80 flex flex-col gap-5">
+            <div id="win-warning" class="hidden bg-rose-50 border border-rose-200 p-4 rounded-2xl text-rose-600 text-xs font-black animate-bounce text-center">
+                🚩 위기! 5목이 완성되었습니다. 즉시 따내세요!
+            </div>
+
+            <!-- 현재 차례 상태 -->
+            <div class="bg-white p-6 rounded-2xl flex items-center justify-between border border-slate-100 shadow-sm">
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase">Current Turn</span>
+                    <span id="turn-text" class="font-black text-slate-800 text-xl">흑의 차례</span>
+                </div>
+                <div id="turn-indicator" class="w-12 h-12 rounded-full bg-black border-4 border-slate-100 shadow-inner transition-all duration-300"></div>
+            </div>
+
+            <!-- 점수판 -->
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-slate-900 text-white p-5 rounded-2xl shadow-lg relative overflow-hidden">
+                    <div class="text-[10px] opacity-50 font-black uppercase mb-1">Black Captures</div>
+                    <div id="black-captures" class="text-3xl font-black italic">0</div>
+                    <div class="absolute -right-2 -bottom-2 opacity-10 text-5xl font-black">B</div>
+                </div>
+                <div class="bg-white text-slate-900 border border-slate-200 p-5 rounded-2xl shadow-sm relative overflow-hidden">
+                    <div id="white-label" class="text-[10px] text-slate-400 font-black uppercase mb-1">White Captures</div>
+                    <div id="white-captures" class="text-3xl font-black italic">0</div>
+                    <div class="absolute -right-2 -bottom-2 opacity-5 text-5xl font-black text-slate-900">W</div>
+                </div>
+            </div>
+
+            <!-- 게임 가이드 -->
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-[11px] text-slate-500 leading-relaxed">
+                <p class="font-bold text-slate-700 mb-1">🎮 오둑 규칙 안내</p>
+                <ul class="list-disc ml-4 space-y-1">
+                    <li>오목처럼 5개를 먼저 이으면 승리 후보가 됩니다.</li>
+                    <li>상대의 5목을 <b>바둑처럼 따내면</b> 승리를 저지합니다.</li>
+                    <li>흑은 3-3, 4-4, 장목(6목 이상)이 금지됩니다.</li>
+                    <li>활로가 하나 남은 돌(단수)은 <span class="text-yellow-500 font-bold">노란색</span>으로 표시됩니다.</li>
+                </ul>
+            </div>
+
+            <!-- 하단 액션 -->
+            <div class="flex flex-col gap-3">
+                <button id="undo-btn" onclick="undoMove()" class="w-full py-4 bg-indigo-50 text-indigo-700 font-black rounded-2xl hover:bg-indigo-100 disabled:opacity-30 transition-all flex items-center justify-center gap-3">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+                    한 수 무르기
+                </button>
+                <button onclick="resetGame()" class="w-full py-3 text-slate-400 font-bold hover:text-rose-500 transition-all text-[11px] uppercase tracking-widest">게임 초기화</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BOARD_SIZE = 15;
+        const CELL_SIZE = 36;
+        const OFFSET = 28;
+        const boardSvg = document.getElementById('game-board');
+        const turnIndicatorEl = document.getElementById('turn-indicator');
+        const turnTextEl = document.getElementById('turn-text');
+        const blackCapturesEl = document.getElementById('black-captures');
+        const whiteCapturesEl = document.getElementById('white-captures');
+        const statusOverlay = document.getElementById('status-overlay');
+        const winnerText = document.getElementById('winner-text');
+        const aiLoading = document.getElementById('ai-loading');
+        const undoBtn = document.getElementById('undo-btn');
+        const winWarning = document.getElementById('win-warning');
+        const winRateBlackBar = document.getElementById('win-rate-black');
+        const blackRateText = document.getElementById('black-rate-text');
+        const whiteRateText = document.getElementById('white-rate-text');
+
+        let board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0)); 
+        let currentPlayer = 1; 
+        let captures = { 1: 0, 2: 0 };
+        let lastMove = null;
+        let gameOver = false;
+        let gameMode = 'pvp'; 
+        let winCandidate = null; 
+        let history = [];
+
+        function initBoard() {
+            boardSvg.innerHTML = '';
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                boardSvg.appendChild(createSvg("line", {x1: OFFSET, y1: OFFSET + i * CELL_SIZE, x2: OFFSET + (BOARD_SIZE - 1) * CELL_SIZE, y2: OFFSET + i * CELL_SIZE}, ["grid-line"]));
+                boardSvg.appendChild(createSvg("line", {x1: OFFSET + i * CELL_SIZE, y1: OFFSET, x2: OFFSET + i * CELL_SIZE, y2: OFFSET + (BOARD_SIZE - 1) * CELL_SIZE}, ["grid-line"]));
+            }
+            [3, 7, 11].forEach(r => [3, 7, 11].forEach(c => boardSvg.appendChild(createSvg("circle", {cx: OFFSET + c * CELL_SIZE, cy: OFFSET + r * CELL_SIZE, r: 3.5}, ["star-point"]))));
+        }
+
+        function createSvg(tag, attrs, classes = []) {
+            const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+            for (let k in attrs) el.setAttribute(k, attrs[k]);
+            classes.forEach(c => el.classList.add(c));
+            return el;
+        }
+
+        function setGameMode(mode) {
+            gameMode = mode;
+            document.getElementById('mode-pvp').classList.toggle('active-tab', mode === 'pvp');
+            document.getElementById('mode-pve').classList.toggle('active-tab', mode === 'pve');
+            document.getElementById('white-label').innerText = mode === 'pvp' ? "White Captures" : "AI Captures";
+            resetGame();
+        }
+
+        function drawBoard() {
+            boardSvg.querySelectorAll('.stone-black, .stone-white, .last-move-marker, .forbidden-x, .win-candidate, .atari-marker').forEach(e => e.remove());
+            
+            // 5목 승리 후보 표시
+            if (winCandidate) {
+                winCandidate.stones.forEach(([r, c]) => {
+                    boardSvg.appendChild(createSvg("circle", {cx: OFFSET + c * CELL_SIZE, cy: OFFSET + r * CELL_SIZE, r: 18}, ["win-candidate"]));
+                });
+                winWarning.classList.remove('hidden');
+            } else {
+                winWarning.classList.add('hidden');
+            }
+
+            // 단수(Atari) 표시 - 바둑 규칙 활로가 1개인 그룹 표시
+            findAtariGroups().forEach(([r, c]) => {
+                boardSvg.appendChild(createSvg("circle", {cx: OFFSET + c * CELL_SIZE, cy: OFFSET + r * CELL_SIZE, r: 17}, ["atari-marker"]));
+            });
+
+            // 금수 표시 (흑 차례일 때만)
+            if (currentPlayer === 1 && !gameOver) {
+                for (let r = 0; r < BOARD_SIZE; r++)
+                    for (let c = 0; c < BOARD_SIZE; c++)
+                        if (board[r][c] === 0 && checkForbidden(r, c)) drawX(r, c);
+            }
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] !== 0) {
+                        boardSvg.appendChild(createSvg("circle", {cx: OFFSET + c * CELL_SIZE, cy: OFFSET + r * CELL_SIZE, r: 15.5}, [board[r][c] === 1 ? "stone-black" : "stone-white"]));
+                        if (lastMove && lastMove.r === r && lastMove.c === c) boardSvg.appendChild(createSvg("circle", {cx: OFFSET + c * CELL_SIZE, cy: OFFSET + r * CELL_SIZE, r: 4}, ["last-move-marker"]));
+                    }
+                }
+            }
+        }
+
+        // 보드 내의 모든 그룹을 스캔하여 활로가 1개인 돌(단수)의 좌표 반환
+        function findAtariGroups() {
+            const atariStones = [];
+            const visited = new Set();
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] !== 0 && !visited.has(`${r},${c}`)) {
+                        const group = getGroup(r, c);
+                        group.stones.forEach(([sr, sc]) => visited.add(`${sr},${sc}`));
+                        
+                        if (group.liberties.length === 1) {
+                            group.stones.forEach(s => atariStones.push(s));
+                        }
+                    }
+                }
+            }
+            return atariStones;
+        }
+
+        function drawX(r, c) {
+            const x = OFFSET + c * CELL_SIZE, y = OFFSET + r * CELL_SIZE, s = 6;
+            boardSvg.appendChild(createSvg("line", {x1: x-s, y1: y-s, x2: x+s, y2: y+s}, ["forbidden-x"]));
+            boardSvg.appendChild(createSvg("line", {x1: x+s, y1: y-s, x2: x-s, y2: y+s}, ["forbidden-x"]));
+        }
+
+        boardSvg.addEventListener('click', (e) => {
+            if (gameOver || (gameMode === 'pve' && currentPlayer === 2)) return;
+            const rect = boardSvg.getBoundingClientRect();
+            const c = Math.round((e.clientX - rect.left - OFFSET) / CELL_SIZE);
+            const r = Math.round((e.clientY - rect.top - OFFSET) / CELL_SIZE);
+            if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) placeStone(r, c);
+        });
+
+        function saveHistory() {
+            history.push({
+                board: board.map(row => [...row]),
+                currentPlayer: currentPlayer,
+                captures: { ...captures },
+                lastMove: lastMove ? { ...lastMove } : null,
+                winCandidate: winCandidate ? JSON.parse(JSON.stringify(winCandidate)) : null
+            });
+        }
+
+        function undoMove() {
+            if (history.length === 0 || gameOver) return;
+            if (gameMode === 'pve' && currentPlayer === 1 && history.length >= 2) {
+                history.pop(); history.pop(); 
+                const state = history.length > 0 ? history[history.length-1] : null;
+                if (!state) resetGame(); else applyState(state);
+            } else {
+                const state = history.pop();
+                applyState(state);
+            }
+            drawBoard();
+            updateUI();
+        }
+
+        function applyState(state) {
+            board = state.board.map(row => [...row]);
+            currentPlayer = state.currentPlayer;
+            captures = { ...state.captures };
+            lastMove = state.lastMove ? { ...state.lastMove } : null;
+            winCandidate = state.winCandidate ? JSON.parse(JSON.stringify(state.winCandidate)) : null;
+        }
+
+        function placeStone(r, c) {
+            if (board[r][c] !== 0) return;
+            if (currentPlayer === 1 && checkForbidden(r, c)) return;
+
+            saveHistory();
+            
+            board[r][c] = currentPlayer;
+            lastMove = { r, c };
+
+            checkCaptures(r, c, currentPlayer === 1 ? 2 : 1);
+
+            // 자충수 방지
+            if (getGroup(r, c).liberties.length === 0) {
+                board[r][c] = 0; 
+                history.pop();
+                lastMove = null; 
+                return;
+            }
+
+            if (winCandidate && winCandidate.player !== currentPlayer) {
+                const stillExists = winCandidate.stones.every(([sr, sc]) => board[sr][sc] === winCandidate.player);
+                if (stillExists) {
+                    drawBoard();
+                    endGame(winCandidate.player === 1 ? "흑의 승리!" : "백의 승리!");
+                    return;
+                } else {
+                    winCandidate = null;
+                }
+            }
+
+            const winStones = getWinStones(r, c, currentPlayer);
+            if (winStones) {
+                winCandidate = { player: currentPlayer, stones: winStones };
+            }
+
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+            drawBoard();
+            updateUI();
+
+            if (!gameOver && gameMode === 'pve' && currentPlayer === 2) {
+                aiLoading.classList.remove('hidden');
+                aiLoading.classList.add('flex');
+                setTimeout(aiMove, 600);
+            }
+        }
+
+        function analyzeWinRate() {
+            if (gameOver) return;
+
+            let blackScore = captures[1] * 15; 
+            let whiteScore = captures[2] * 15;
+
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] === 1) {
+                        blackScore += evaluatePositionPower(r, c, 1);
+                    } else if (board[r][c] === 2) {
+                        whiteScore += evaluatePositionPower(r, c, 2);
+                    }
+                }
+            }
+
+            if (winCandidate) {
+                if (winCandidate.player === 1) blackScore += 800;
+                else whiteScore += 800;
+            }
+
+            const total = blackScore + whiteScore + 200;
+            let blackProb = Math.round((blackScore + 100) / total * 100);
+            
+            blackProb = Math.max(2, Math.min(98, blackProb));
+            let whiteProb = 100 - blackProb;
+
+            winRateBlackBar.style.width = `${blackProb}%`;
+            blackRateText.innerText = `${blackProb}%`;
+            whiteRateText.innerText = `${whiteProb}%`;
+        }
+
+        function evaluatePositionPower(r, c, color) {
+            let score = 0;
+            for (let [dr, dc] of [[1,0], [0,1], [1,1], [1,-1]]) {
+                let cnt = 1;
+                for (let s of [1, -1]) {
+                    for (let i = 1; i < 5; i++) {
+                        let nr = r + dr*i*s, nc = c + dc*i*s;
+                        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === color) cnt++;
+                        else break;
+                    }
+                }
+                score += Math.pow(cnt, 2.5); 
+            }
+            return score;
+        }
+
+        function aiMove() {
+            let bestScore = -Infinity;
+            let move = null;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (board[r][c] !== 0) continue;
+                    board[r][c] = 2;
+                    let canCapture = checkCapturesPreview(r, c, 1);
+                    if (!canCapture && getGroup(r, c).liberties.length === 0) { board[r][c] = 0; continue; }
+                    board[r][c] = 0;
+                    let score = evaluateMove(r, c);
+                    if (score > bestScore) { bestScore = score; move = {r, c}; }
+                }
+            }
+            aiLoading.classList.add('hidden');
+            aiLoading.classList.remove('flex');
+            if (move) placeStone(move.r, move.c);
+        }
+
+        function evaluateMove(r, c) {
+            let score = Math.random() * 10;
+            score += getLineScore(r, c, 2) * 2;
+            score += getLineScore(r, c, 1) * 1.8;
+            board[r][c] = 2;
+            let captureCount = checkCapturesPreview(r, c, 1);
+            score += captureCount * 150;
+            if (winCandidate && winCandidate.player === 1) score += 10000;
+            board[r][c] = 0;
+            return score;
+        }
+
+        function getLineScore(r, c, color) {
+            let total = 0;
+            for (let [dr, dc] of [[1,0], [0,1], [1,1], [1,-1]]) {
+                let count = 1, openEnds = 0;
+                for (let side of [1, -1]) {
+                    for (let i = 1; i < 5; i++) {
+                        let nr = r + dr * i * side, nc = c + dc * i * side;
+                        if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) break;
+                        if (board[nr][nc] === color) count++;
+                        else if (board[nr][nc] === 0) { openEnds++; break; }
+                        else break;
+                    }
+                }
+                if (count >= 5) total += 50000;
+                else if (count === 4 && openEnds >= 1) total += 5000;
+                else if (count === 3 && openEnds >= 2) total += 500;
+            }
+            return total;
+        }
+
+        function checkCapturesPreview(r, c, target) {
+            let count = 0;
+            [[r-1, c], [r+1, c], [r, c-1], [r, c+1]].forEach(([nr, nc]) => {
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === target) {
+                    if (getGroup(nr, nc).liberties.length === 0) count += getGroup(nr, nc).stones.length;
+                }
+            });
+            return count;
+        }
+
+        function checkCaptures(lastR, lastC, target) {
+            let total = 0;
+            [[lastR-1, lastC], [lastR+1, lastC], [lastR, lastC-1], [lastR, lastC+1]].forEach(([nr, nc]) => {
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === target) {
+                    const g = getGroup(nr, nc);
+                    if (g.liberties.length === 0) g.stones.forEach(([sr, sc]) => { board[sr][sc] = 0; total++; });
+                }
+            });
+            if (total > 0) { captures[currentPlayer] += total; return true; }
+            return false;
+        }
+
+        function getGroup(r, c) {
+            const color = board[r][c], visited = new Set(), stones = [], liberties = new Set(), stack = [[r, c]];
+            if (color === 0) return { stones: [], liberties: [] };
+            visited.add(`${r},${c}`);
+            while (stack.length > 0) {
+                const [cr, cc] = stack.pop(); stones.push([cr, cc]);
+                [[cr-1, cc], [cr+1, cc], [cr, cc-1], [cr, cc+1]].forEach(([nr, nc]) => {
+                    if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                        if (board[nr][nc] === 0) liberties.add(`${nr},${nc}`);
+                        else if (board[nr][nc] === color && !visited.has(`${nr},${nc}`)) { visited.add(`${nr},${nc}`); stack.push([nr, nc]); }
+                    }
+                });
+            }
+            return { stones, liberties: Array.from(liberties) };
+        }
+
+        function getWinStones(r, c, color) {
+            for (let [dr, dc] of [[1,0], [0,1], [1,1], [1,-1]]) {
+                let stones = [[r, c]];
+                for (let s of [1, -1]) for (let i = 1; i < 6; i++) {
+                    let nr = r+dr*i*s, nc = c+dc*i*s;
+                    if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === color) stones.push([nr, nc]); else break;
+                }
+                if (color === 1 ? stones.length === 5 : stones.length >= 5) return stones;
+            }
+            return null;
+        }
+
+        function checkForbidden(r, c) {
+            board[r][c] = 1;
+            let forbidden = isOverline(r, c) || countOpenThrees(r, c) >= 2 || countFours(r, c) >= 2;
+            board[r][c] = 0;
+            return forbidden;
+        }
+
+        function isOverline(r, c) {
+            for (let [dr, dc] of [[1,0], [0,1], [1,1], [1,-1]]) {
+                let cnt = 1;
+                for (let s of [1, -1]) for (let i = 1; i < 7; i++) {
+                    let nr = r+dr*i*s, nc = c+dc*i*s;
+                    if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 1) cnt++; else break;
+                }
+                if (cnt > 5) return true;
+            }
+            return false;
+        }
+
+        function countOpenThrees(r, c) {
+            let cnt = 0;
+            for (let [dr, dc] of [[1,0], [0,1], [1,1], [1,-1]]) {
+                for (let offset = -3; offset <= 0; offset++) {
+                    let pattern = "";
+                    for (let i = 0; i < 6; i++) {
+                        const nr = r+(offset+i)*dr, nc = c+(offset+i)*dc;
+                        if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) pattern += "X";
+                        else pattern += board[nr][nc] === 1 ? "B" : (board[nr][nc] === 2 ? "W" : ".");
+                    }
+                    if ([".BBB..", "..BBB.", ".B.BB.", ".BB.B."].includes(pattern)) { cnt++; break; }
+                }
+            }
+            return cnt;
+        }
+
+        function countFours(r, c) {
+            let cnt = 0;
+            for (let [dr, dc] of [[1,0], [0,1], [1,1], [1,-1]]) {
+                for (let offset = -4; offset <= 0; offset++) {
+                    let stones = 0, possible = true;
+                    for (let i = 0; i < 5; i++) {
+                        const nr = r+(offset+i)*dr, nc = c+(offset+i)*dc;
+                        if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE || board[nr][nc] === 2) { possible = false; break; }
+                        if (board[nr][nc] === 1) stones++;
+                    }
+                    if (possible && stones === 4) { cnt++; break; }
+                }
+            }
+            return cnt;
+        }
+
+        function updateUI() {
+            turnIndicatorEl.style.backgroundColor = currentPlayer === 1 ? "#111" : "#fff";
+            turnTextEl.innerText = currentPlayer === 1 ? "흑의 차례" : "백의 차례";
+            blackCapturesEl.innerText = captures[1];
+            whiteCapturesEl.innerText = captures[2];
+            undoBtn.disabled = history.length === 0 || gameOver;
+            analyzeWinRate();
+        }
+
+        function endGame(msg) {
+            gameOver = true; winnerText.innerText = msg; statusOverlay.classList.remove('hidden'); 
+            const finalBlack = msg.includes("흑") ? 100 : 0;
+            winRateBlackBar.style.width = `${finalBlack}%`;
+            blackRateText.innerText = `${finalBlack}%`;
+            whiteRateText.innerText = `${100-finalBlack}%`;
+        }
+
+        function resetGame() {
+            board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+            currentPlayer = 1; captures = { 1: 0, 2: 0 }; lastMove = null; gameOver = false; history = []; winCandidate = null;
+            statusOverlay.classList.add('hidden'); aiLoading.classList.add('hidden'); winWarning.classList.add('hidden');
+            initBoard(); drawBoard(); updateUI();
+        }
+
+        window.onload = () => { initBoard(); drawBoard(); updateUI(); };
+    </script>
+</body>
+</html>
