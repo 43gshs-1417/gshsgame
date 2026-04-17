@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>펭귄 녹아웃</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a202c;
+            color: white;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            background-color: #000;
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+            border-radius: 30px;
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10;
+            backdrop-filter: blur(8px);
+        }
+        .hidden {
+            display: none !important;
+        }
+        .btn {
+            background: #4F46E5;
+            color: white;
+            padding: 14px 28px;
+            border-radius: 16px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: none;
+            box-shadow: 0 6px 10px rgba(0,0,0,0.4);
+        }
+        .btn:hover { background: #4338CA; transform: scale(1.05); }
+        .btn-green { background: #10B981; }
+        .btn-green:hover { background: #059669; }
+        
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        #count-down {
+            font-size: 10rem;
+            font-weight: 900;
+            color: #FACC15;
+            text-shadow: 0 0 20px rgba(250, 204, 21, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="800"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+        <h2 id="hud-turn" class="text-3xl font-bold mb-2 drop-shadow-lg"></h2>
+        <p id="hud-desc" class="text-lg text-gray-300">신중하게 각도를 조절하세요...</p>
+    </div>
+
+    <!-- 준비 완료 버튼 -->
+    <div id="action-btn-container" class="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-5 hidden">
+        <button id="confirm-aim-btn" class="btn btn-green shadow-lg">결정 완료 🐧</button>
+    </div>
+
+    <!-- 초기 설정 -->
+    <div id="ui-setup" class="ui-layer">
+        <h1 class="text-6xl font-black mb-8 text-blue-400 drop-shadow-xl animate-pulse">🐧 펭귄 녹아웃 🐧</h1>
+        <div class="bg-gray-800 p-10 rounded-3xl shadow-2xl text-center max-w-md w-full border border-gray-700">
+            <label class="block text-2xl mb-6 font-bold text-gray-200">참여 펭귄 수</label>
+            <input type="number" id="player-count" min="2" max="8" value="2" 
+                   class="w-full text-center text-4xl p-3 mb-8 bg-gray-900 text-white rounded-2xl outline-none border-4 border-gray-700 focus:border-blue-500 transition-all">
+            <button id="start-btn" class="btn w-full py-5 text-2xl">게임 시작!</button>
+        </div>
+    </div>
+
+    <!-- 턴 가림막 -->
+    <div id="ui-turn-pass" class="ui-layer hidden">
+        <h2 id="turn-pass-title" class="text-5xl font-bold mb-6 italic"></h2>
+        <p class="text-2xl mb-10 text-gray-400">다른 친구가 못 보게 가려주세요!</p>
+        <button id="next-turn-btn" class="btn px-12 py-5">전략 세우러 가기</button>
+    </div>
+
+    <!-- 카운트다운 레이어 -->
+    <div id="ui-countdown" class="ui-layer hidden">
+        <div id="count-down">3</div>
+    </div>
+
+    <!-- 격돌 효과 -->
+    <div id="ui-reveal" class="ui-layer hidden bg-transparent">
+        <h2 class="text-9xl font-black text-red-600 animate-ping drop-shadow-[0_0_30px_rgba(255,0,0,1)]">격 돌</h2>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div id="ui-gameover" class="ui-layer hidden">
+        <h2 id="winner-text" class="text-7xl font-black mb-12 text-yellow-400"></h2>
+        <button id="restart-btn" class="btn px-16 py-8 text-3xl">새 게임 시작</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const uiSetup = document.getElementById('ui-setup');
+    const uiTurnPass = document.getElementById('ui-turn-pass');
+    const uiCountdown = document.getElementById('ui-countdown');
+    const uiReveal = document.getElementById('ui-reveal');
+    const uiGameover = document.getElementById('ui-gameover');
+    const hud = document.getElementById('hud');
+    const actionBtnContainer = document.getElementById('action-btn-container');
+    const countDownText = document.getElementById('count-down');
+    
+    // 게임 상수 (속도를 극한으로 낮춤)
+    const CANVAS_SIZE = 800;
+    const ARENA_RADIUS = 320;
+    const PENGUIN_RADIUS = 22;
+    const FRICTION = 0.965; // 마찰력 더 높임 (빨리 멈추고 묵직함)
+    const RESTITUTION = 0.85; // 충돌 시 튕겨나가는 정도
+    const MAX_POWER = 10; // 최대 파워 더 줄임 (기존 12 -> 10)
+    const DRAG_SCALE = 0.025; // 조작 민감도 더 줄임 (기존 0.035 -> 0.025)
+
+    const PLAYER_COLORS = ['#FF4D4D', '#4D94FF', '#4DFF88', '#FFD14D', '#D14DFF', '#4DFFFF', '#FF884D', '#E5E7EB'];
+
+    const MAP_TYPES = [
+        { id: 'HELL', name: '용암 지대', bg: '#1a0505', arena: '#7f1d1d', border: '#ef4444' },
+        { id: 'HEAVEN', name: '꿈의 구름', bg: '#f0f9ff', arena: '#ffffff', border: '#bae6fd' },
+        { id: 'FLAT', name: '평온한 숲', bg: '#022c22', arena: '#059669', border: '#34d399' }
+    ];
+
+    let state = 'SETUP';
+    let players = [];
+    let activePlayerIds = []; // 이번 라운드에서 조준해야 할 플레이어들
+    let currentAimingIdx = 0;
+    let currentMap = null;
+    let animationId = null;
+
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+    let dragCurrent = { x: 0, y: 0 };
+
+    function resizeCanvas() {
+        const size = Math.min(window.innerWidth, window.innerHeight) * 0.95;
+        canvas.style.width = size + 'px';
+        canvas.style.height = size + 'px';
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function getCanvasPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: (clientX - rect.left) * (canvas.width / rect.width),
+            y: (clientY - rect.top) * (canvas.height / rect.height)
+        };
+    }
+
+    document.getElementById('start-btn').addEventListener('click', () => {
+        const count = Math.max(2, Math.min(8, parseInt(document.getElementById('player-count').value) || 2));
+        startGame(count);
+    });
+
+    function startGame(count) {
+        currentMap = MAP_TYPES[Math.floor(Math.random() * MAP_TYPES.length)];
+        players = [];
+        
+        const angleStep = (Math.PI * 2) / count;
+        const spawnRadius = ARENA_RADIUS * 0.6;
+
+        for (let i = 0; i < count; i++) {
+            const angle = i * angleStep;
+            players.push({
+                id: i,
+                num: i + 1,
+                x: CANVAS_SIZE/2 + Math.cos(angle) * spawnRadius,
+                y: CANVAS_SIZE/2 + Math.sin(angle) * spawnRadius,
+                vx: 0,
+                vy: 0,
+                radius: PENGUIN_RADIUS,
+                color: PLAYER_COLORS[i],
+                isAlive: true,
+                aim: null
+            });
+        }
+
+        uiSetup.classList.add('hidden');
+        startRound();
+        if (animationId) cancelAnimationFrame(animationId);
+        gameLoop();
+    }
+
+    function startRound() {
+        activePlayerIds = players.filter(p => p.isAlive).map(p => p.id);
+        
+        // 만약 한 명만 남았다면 우승 처리
+        if (activePlayerIds.length <= 1) {
+            endGame();
+            return;
+        }
+
+        currentAimingIdx = 0;
+        showPassScreen();
+    }
+
+    function showPassScreen() {
+        state = 'PASS';
+        const p = players[activePlayerIds[currentAimingIdx]];
+        uiTurnPass.classList.remove('hidden');
+        hud.classList.add('hidden');
+        actionBtnContainer.classList.add('hidden');
+        document.getElementById('turn-pass-title').innerText = `🐧 플레이어 ${p.num}의 차례`;
+        document.getElementById('turn-pass-title').style.color = p.color;
+    }
+
+    document.getElementById('next-turn-btn').addEventListener('click', () => {
+        uiTurnPass.classList.add('hidden');
+        startAiming();
+    });
+
+    function startAiming() {
+        state = 'AIM';
+        const p = players[activePlayerIds[currentAimingIdx]];
+        hud.classList.remove('hidden');
+        actionBtnContainer.classList.remove('hidden');
+        document.getElementById('hud-turn').innerText = `플레이어 ${p.num} 조작 중`;
+        document.getElementById('hud-turn').style.color = p.color;
+    }
+
+    document.getElementById('confirm-aim-btn').addEventListener('click', () => {
+        const p = players[activePlayerIds[currentAimingIdx]];
+        if (!p.aim) p.aim = { vx: 0, vy: 0 };
+        
+        currentAimingIdx++;
+        if (currentAimingIdx >= activePlayerIds.length) {
+            startCountdown();
+        } else {
+            showPassScreen();
+        }
+    });
+
+    function startCountdown() {
+        state = 'COUNTDOWN';
+        hud.classList.add('hidden');
+        actionBtnContainer.classList.add('hidden');
+        uiCountdown.classList.remove('hidden');
+        
+        let count = 3;
+        countDownText.innerText = count;
+        
+        const timer = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countDownText.innerText = count;
+            } else {
+                clearInterval(timer);
+                uiCountdown.classList.add('hidden');
+                startReveal();
+            }
+        }, 800);
+    }
+
+    function startReveal() {
+        state = 'REVEAL';
+        uiReveal.classList.remove('hidden');
+        setTimeout(() => {
+            uiReveal.classList.add('hidden');
+            startAction();
+        }, 1200);
+    }
+
+    function startAction() {
+        state = 'ACTION';
+        players.forEach(p => {
+            if (p.isAlive && p.aim) {
+                p.vx = p.aim.vx;
+                p.vy = p.aim.vy;
+                p.aim = null;
+            }
+        });
+    }
+
+    function checkRoundEnd() {
+        let moving = false;
+        players.forEach(p => {
+            if (Math.abs(p.vx) > 0.03 || Math.abs(p.vy) > 0.03) moving = true;
+            else { p.vx = 0; p.vy = 0; }
+        });
+
+        if (!moving) {
+            startRound();
+        }
+    }
+
+    function endGame() {
+        state = 'GAMEOVER';
+        uiGameover.classList.remove('hidden');
+        const winner = players.find(p => p.isAlive);
+        if (winner) {
+            document.getElementById('winner-text').innerText = `🏆 P${winner.num} 최종 우승! 🏆`;
+            document.getElementById('winner-text').style.color = winner.color;
+        } else {
+            document.getElementById('winner-text').innerText = "💀 모두 탈락! 💀";
+            document.getElementById('winner-text').style.color = "#FF4D4D";
+        }
+    }
+
+    document.getElementById('restart-btn').addEventListener('click', () => {
+        uiGameover.classList.add('hidden');
+        uiSetup.classList.remove('hidden');
+    });
+
+    function handleStart(e) {
+        if (state !== 'AIM') return;
+        isDragging = true;
+        const p = players[activePlayerIds[currentAimingIdx]];
+        dragStart = { x: p.x, y: p.y }; 
+        dragCurrent = getCanvasPos(e);
+    }
+
+    function handleMove(e) {
+        if (!isDragging || state !== 'AIM') return;
+        dragCurrent = getCanvasPos(e);
+        updateAim();
+    }
+
+    function handleEnd() {
+        isDragging = false;
+    }
+
+    function updateAim() {
+        const p = players[activePlayerIds[currentAimingIdx]];
+        let dx = dragStart.x - dragCurrent.x;
+        let dy = dragStart.y - dragCurrent.y;
+        let power = Math.hypot(dx, dy) * DRAG_SCALE;
+        if (power > MAX_POWER) {
+            const ratio = MAX_POWER / power;
+            dx *= ratio; dy *= ratio;
+        }
+        p.aim = { vx: dx, vy: dy };
+    }
+
+    canvas.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e); }, {passive: false});
+    window.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); }, {passive: false});
+    window.addEventListener('touchend', handleEnd);
+
+    function updatePhysics() {
+        if (state !== 'ACTION') return;
+
+        players.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vx *= FRICTION;
+            p.vy *= FRICTION;
+
+            if (p.isAlive) {
+                const distFromCenter = Math.hypot(p.x - CANVAS_SIZE/2, p.y - CANVAS_SIZE/2);
+                if (distFromCenter > ARENA_RADIUS + p.radius) {
+                    p.isAlive = false;
+                }
+            }
+        });
+
+        // 원형 충돌
+        for (let i = 0; i < players.length; i++) {
+            for (let j = i + 1; j < players.length; j++) {
+                const p1 = players[i]; const p2 = players[j];
+                if (!p1.isAlive || !p2.isAlive) continue;
+                const dx = p2.x - p1.x; const dy = p2.y - p1.y;
+                const dist = Math.hypot(dx, dy);
+                const minDist = p1.radius + p2.radius;
+
+                if (dist < minDist) {
+                    const overlap = minDist - dist;
+                    const nx = dx / dist; const ny = dy / dist;
+                    p1.x -= nx * (overlap / 2); p1.y -= ny * (overlap / 2);
+                    p2.x += nx * (overlap / 2); p2.y += ny * (overlap / 2);
+
+                    const vxDiff = p1.vx - p2.vx;
+                    const vyDiff = p1.vy - p2.vy;
+                    const dotProduct = vxDiff * nx + vyDiff * ny;
+
+                    if (dotProduct > 0) {
+                        const impulse = (1 + RESTITUTION) * dotProduct;
+                        p1.vx -= impulse * nx * 0.5;
+                        p1.vy -= impulse * ny * 0.5;
+                        p2.vx += impulse * nx * 0.5;
+                        p2.vy += impulse * ny * 0.5;
+                    }
+                }
+            }
+        }
+        checkRoundEnd();
+    }
+
+    function drawArrow(x, y, vx, vy, color) {
+        if (vx === 0 && vy === 0) return;
+        const displayScale = 8; 
+        const endX = x + vx * displayScale;
+        const endY = y + vy * displayScale;
+        const angle = Math.atan2(vy, vx);
+        const headlen = 14;
+        
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(x, y); ctx.lineTo(endX, endY);
+        ctx.lineTo(endX - headlen * Math.cos(angle - Math.PI / 6), endY - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headlen * Math.cos(angle + Math.PI / 6), endY - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(x, y); ctx.lineTo(endX, endY);
+        ctx.lineTo(endX - headlen * Math.cos(angle - Math.PI / 6), endY - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headlen * Math.cos(angle + Math.PI / 6), endY - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+    }
+
+    function drawPenguin(p) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        
+        let angle = 0;
+        if (state === 'ACTION' && Math.hypot(p.vx, p.vy) > 0.1) {
+            angle = Math.atan2(p.vy, p.vx) + Math.PI/2;
+        } else if (state === 'AIM' && p.id === activePlayerIds[currentAimingIdx] && p.aim) {
+            angle = Math.atan2(p.aim.vy, p.aim.vx) + Math.PI/2;
+        }
+        ctx.rotate(angle);
+
+        // 발
+        ctx.fillStyle = '#FFB800';
+        ctx.beginPath(); ctx.ellipse(-12, 18, 9, 6, 0.4, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(12, 18, 9, 6, -0.4, 0, Math.PI*2); ctx.fill();
+
+        // 몸통
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // 배
+        ctx.beginPath();
+        ctx.ellipse(0, 4, p.radius * 0.7, p.radius * 0.85, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+
+        // 볼 터치
+        ctx.fillStyle = '#FFC0CB';
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath(); ctx.arc(-14, 2, 7, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(14, 2, 7, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1.0;
+
+        // 눈
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.arc(-7, -4, 4.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(7, -4, 4.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#FFF';
+        ctx.beginPath(); ctx.arc(-8, -6, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(6, -6, 2, 0, Math.PI*2); ctx.fill();
+
+        // 부리
+        ctx.fillStyle = '#FF8A00';
+        ctx.beginPath();
+        ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.lineTo(0, 9); ctx.fill();
+
+        ctx.restore();
+
+        // 번호 텍스트
+        ctx.fillStyle = '#FFF';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 4;
+        ctx.font = 'bold 22px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeText(`P${p.num}`, p.x, p.y - p.radius - 15);
+        ctx.fillText(`P${p.num}`, p.x, p.y - p.radius - 15);
+    }
+
+    function drawMap() {
+        if (!currentMap) return;
+        ctx.fillStyle = currentMap.bg;
+        ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        
+        // 경기장 그림자
+        ctx.beginPath();
+        ctx.arc(CANVAS_SIZE/2 + 5, CANVAS_SIZE/2 + 5, ARENA_RADIUS + 10, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fill();
+
+        // 경기장 테두리
+        ctx.beginPath();
+        ctx.arc(CANVAS_SIZE/2, CANVAS_SIZE/2, ARENA_RADIUS + 10, 0, Math.PI * 2);
+        ctx.fillStyle = currentMap.border;
+        ctx.fill();
+
+        // 바닥
+        ctx.beginPath();
+        ctx.arc(CANVAS_SIZE/2, CANVAS_SIZE/2, ARENA_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = currentMap.arena;
+        ctx.fill();
+
+        if (currentMap.id === 'HEAVEN') {
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.beginPath(); ctx.arc(200, 200, 60, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(250, 210, 70, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(600, 650, 80, 0, Math.PI*2); ctx.fill();
+        } else if (currentMap.id === 'HELL') {
+            ctx.strokeStyle = 'rgba(255,100,0,0.3)';
+            ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(100, 100); ctx.lineTo(300, 250); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(600, 100); ctx.lineTo(400, 400); ctx.stroke();
+        }
+    }
+
+    function gameLoop() {
+        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        updatePhysics();
+        drawMap();
+        
+        if (state === 'AIM') {
+            const p = players[activePlayerIds[currentAimingIdx]];
+            if (p && p.aim) drawArrow(p.x, p.y, p.aim.vx, p.aim.vy, p.color);
+        } else if (state === 'REVEAL') {
+            players.forEach(p => { if (p.isAlive && p.aim) drawArrow(p.x, p.y, p.aim.vx, p.aim.vy, p.color); });
+        }
+
+        players.forEach(p => { if (p.isAlive || state === 'ACTION') drawPenguin(p); });
+        
+        // 생존자 수 표시 (우측 하단)
+        if (state !== 'SETUP' && state !== 'GAMEOVER') {
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(CANVAS_SIZE - 180, CANVAS_SIZE - 60, 160, 40);
+            ctx.fillStyle = '#FFF';
+            ctx.font = '20px sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(`생존 펭귄: ${players.filter(p=>p.isAlive).length}마리`, CANVAS_SIZE - 35, CANVAS_SIZE - 32);
+        }
+
+        animationId = requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>
