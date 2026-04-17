@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 장기 알까기</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .panel {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            backdrop-filter: blur(5px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .turn-cho {
+            background: rgba(0, 80, 30, 0.8);
+            border-color: #00ff55;
+            color: #fff;
+        }
+        .turn-han {
+            background: rgba(120, 0, 0, 0.8);
+            border-color: #ff3333;
+            color: #fff;
+        }
+        
+        #controls-help {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.9);
+            margin-top: 10px;
+            text-align: center;
+            background: rgba(0,0,0,0.5);
+            padding: 8px 15px;
+            border-radius: 15px;
+        }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 40px 60px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            display: none;
+            pointer-events: auto;
+            border: 2px solid #ffcc00;
+        }
+        #game-over h1 { margin: 0 0 20px 0; font-size: 36px; }
+        button {
+            background: #ffcc00;
+            color: #111;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s;
+        }
+        button:hover { background: #ffda47; transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <div id="game-container"></div>
+    
+    <div id="ui-layer">
+        <div id="turn-indicator" class="panel turn-cho">
+            초(楚) 차례
+        </div>
+
+        <div id="controls-help">
+            돌을 당겼다 놓으세요. 턴이 바뀌면 화면이 자동으로 돌아갑니다.
+        </div>
+    </div>
+
+    <div id="game-over">
+        <h1 id="winner-text">초 승리!</h1>
+        <button onclick="resetGame()">다시 하기</button>
+    </div>
+
+    <!-- Three.js 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // === 게임 전역 변수 ===
+        let scene, camera, renderer;
+        let stones = [];
+        let explosionParticles = [];
+        let currentTurn = 'cho'; // 'cho' (Green) or 'han' (Red)
+        let gameState = 'IDLE'; // IDLE, AIMING, MOVING, GAMEOVER
+        
+        // 카메라 애니메이션 변수
+        let currentCamAngle = 0;
+        let targetCamAngle = 0;
+        
+        // 물리 및 게임 상수
+        const BOARD_SIZE = 100;
+        const STONE_HEIGHT = 2;
+        const DEFAULT_FRICTION = 0.97;
+        let MAX_POWER = 5;
+        const MULTIPLIER = 0.15;
+        
+        // 장기 말 설정
+        const PIECE_DEFS = {
+            'king':     { type: 'king',     radius: 4.0, mass: 4.0, textCho: '楚', textHan: '漢' },
+            'chariot':  { type: 'chariot',  radius: 3.2, mass: 1.2, textCho: '車', textHan: '車' },
+            'cannon':   { type: 'cannon',   radius: 3.2, mass: 1.0, textCho: '包', textHan: '包' },
+            'horse':    { type: 'horse',    radius: 3.0, mass: 1.0, textCho: '馬', textHan: '馬' },
+            'elephant': { type: 'elephant', radius: 3.2, mass: 1.5, textCho: '象', textHan: '象' },
+            'guard':    { type: 'guard',    radius: 2.8, mass: 1.0, textCho: '士', textHan: '士' },
+            'pawn':     { type: 'pawn',     radius: 2.6, mass: 0.8, textCho: '卒', textHan: '兵' }
+        };
+
+        // 입력 상태
+        let selectedStone = null;
+        let dragStartPoint = new THREE.Vector3();
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -STONE_HEIGHT / 2);
+        
+        // 에이밍 라인
+        let aimLine;
+        
+        init();
+        animate();
+
+        function init() {
+            // 1. 씬 설정
+            const container = document.getElementById('game-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            
+            // 2. 카메라 설정
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+            updateCameraPosition();
+            
+            // 3. 렌더러 설정
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+            
+            // 4. 조명 설정
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(50, 120, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.left = -60;
+            dirLight.shadow.camera.right = 60;
+            dirLight.shadow.camera.top = 60;
+            dirLight.shadow.camera.bottom = -60;
+            scene.add(dirLight);
+            
+            // 5. 장기판 생성
+            createBoard();
+            
+            // 6. 조준선 생성
+            const material = new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 3 });
+            const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,0)]);
+            aimLine = new THREE.Line(geometry, material);
+            aimLine.visible = false;
+            aimLine.position.y = STONE_HEIGHT; 
+            scene.add(aimLine);
+
+            // 7. 장기알 배치
+            setupStones();
+
+            // 8. 이벤트 리스너
+            window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('pointerdown', onPointerDown);
+            renderer.domElement.addEventListener('pointermove', onPointerMove);
+            renderer.domElement.addEventListener('pointerup', onPointerUp);
+        }
+
+        function createBoard() {
+            // 장기판 텍스처(선) 동적 생성
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            
+            // 나무 배경색
+            ctx.fillStyle = '#db9f5c';
+            ctx.fillRect(0, 0, 1024, 1024);
+            
+            // 격자 선 그리기 (장기는 가로 9줄, 세로 10줄)
+            ctx.strokeStyle = '#332211';
+            ctx.lineWidth = 4;
+            
+            const padding = 60;
+            const width = 1024 - padding * 2;
+            const height = 1024 - padding * 2;
+            
+            const xStep = width / 8; // 9줄 (8칸)
+            const yStep = height / 9; // 10줄 (9칸)
+            
+            // 가로선 10개
+            for(let i = 0; i <= 9; i++) {
+                ctx.beginPath();
+                ctx.moveTo(padding, padding + i * yStep);
+                ctx.lineTo(padding + width, padding + i * yStep);
+                ctx.stroke();
+            }
+            // 세로선 9개
+            for(let i = 0; i <= 8; i++) {
+                ctx.beginPath();
+                ctx.moveTo(padding + i * xStep, padding);
+                ctx.lineTo(padding + i * xStep, padding + height);
+                ctx.stroke();
+            }
+            
+            // 궁성 (대각선 X 표시)
+            function drawPalace(startY) {
+                ctx.beginPath();
+                ctx.moveTo(padding + 3 * xStep, padding + startY * yStep);
+                ctx.lineTo(padding + 5 * xStep, padding + (startY + 2) * yStep);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(padding + 5 * xStep, padding + startY * yStep);
+                ctx.lineTo(padding + 3 * xStep, padding + (startY + 2) * yStep);
+                ctx.stroke();
+            }
+            drawPalace(0); // 위쪽 궁성
+            drawPalace(7); // 아래쪽 궁성
+
+            const texture = new THREE.CanvasTexture(canvas);
+            
+            const boardGeo = new THREE.BoxGeometry(BOARD_SIZE, 5, BOARD_SIZE);
+            const boardMat = new THREE.MeshStandardMaterial({ 
+                map: texture,
+                roughness: 0.9,
+            });
+            const sideMat = new THREE.MeshStandardMaterial({ color: '#8b5a2b' });
+            
+            const board = new THREE.Mesh(boardGeo, [sideMat, sideMat, boardMat, sideMat, sideMat, sideMat]);
+            board.position.y = -2.5; 
+            board.receiveShadow = true;
+            scene.add(board);
+        }
+
+        // 장기 말 텍스처 생성 (팔각형 모양 캔버스 텍스처)
+        function createPieceTexture(text, team) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            // 바탕색
+            ctx.fillStyle = '#f4d08e';
+            ctx.beginPath();
+            ctx.arc(128, 128, 120, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 테두리
+            ctx.strokeStyle = '#a67b43';
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            // 글자
+            ctx.fillStyle = team === 'cho' ? '#007733' : '#cc1111';
+            ctx.font = 'bold 120px "Malgun Gothic", Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 138);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createStone(team, typeKey, x, z) {
+            const def = PIECE_DEFS[typeKey];
+            const text = team === 'cho' ? def.textCho : def.textHan;
+            
+            // 장기 말은 팔각기둥 형태
+            const geo = new THREE.CylinderGeometry(def.radius, def.radius + 0.5, STONE_HEIGHT, 8); 
+            
+            // 상단 면에만 글자 텍스처 적용
+            const topTexture = createPieceTexture(text, team);
+            const topMat = new THREE.MeshStandardMaterial({ map: topTexture, roughness: 0.5 });
+            const sideMat = new THREE.MeshStandardMaterial({ color: '#e6c27a', roughness: 0.7 });
+            
+            // 재질 배열 (측면, 상단, 하단)
+            const materials = [sideMat, topMat, sideMat];
+            
+            const mesh = new THREE.Mesh(geo, materials);
+            // 텍스처 방향 맞추기 위해 회전
+            mesh.rotation.y = Math.PI / 8;
+            if (team === 'han') {
+                mesh.rotation.y += Math.PI; // 한나라는 반대로 보임
+            }
+
+            mesh.position.set(x, STONE_HEIGHT / 2, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            
+            scene.add(mesh);
+            
+            stones.push({
+                mesh: mesh,
+                team: team,
+                type: def.type,
+                radius: def.radius,
+                mass: def.mass,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                isFalling: false,
+                isJumping: false,
+                usedAbility: false, // 포(Cannon) 전용
+                active: true
+            });
+        }
+
+        function setupStones() {
+            stones.forEach(stone => scene.remove(stone.mesh));
+            stones = [];
+
+            // 보드 격자 좌표를 월드 좌표로 변환하는 헬퍼 함수
+            const getX = (col) => (col - 4) * 11.0;
+            const getZ = (row) => (row - 4.5) * 9.8;
+
+            // --- 한나라 (Red, 상단, row 0~3) ---
+            createStone('han', 'chariot', getX(0), getZ(0));
+            createStone('han', 'horse', getX(1), getZ(0));
+            createStone('han', 'elephant', getX(2), getZ(0));
+            createStone('han', 'guard', getX(3), getZ(0));
+            createStone('han', 'guard', getX(5), getZ(0));
+            createStone('han', 'elephant', getX(6), getZ(0));
+            createStone('han', 'horse', getX(7), getZ(0));
+            createStone('han', 'chariot', getX(8), getZ(0));
+            
+            createStone('han', 'king', getX(4), getZ(1));
+            
+            createStone('han', 'cannon', getX(1), getZ(2));
+            createStone('han', 'cannon', getX(7), getZ(2));
+            
+            [0, 2, 4, 6, 8].forEach(c => createStone('han', 'pawn', getX(c), getZ(3)));
+
+            // --- 초나라 (Green, 하단, row 6~9) ---
+            [0, 2, 4, 6, 8].forEach(c => createStone('cho', 'pawn', getX(c), getZ(6)));
+
+            createStone('cho', 'cannon', getX(1), getZ(7));
+            createStone('cho', 'cannon', getX(7), getZ(7));
+            
+            createStone('cho', 'king', getX(4), getZ(8));
+
+            createStone('cho', 'chariot', getX(0), getZ(9));
+            createStone('cho', 'horse', getX(1), getZ(9));
+            createStone('cho', 'elephant', getX(2), getZ(9));
+            createStone('cho', 'guard', getX(3), getZ(9));
+            createStone('cho', 'guard', getX(5), getZ(9));
+            createStone('cho', 'elephant', getX(6), getZ(9));
+            createStone('cho', 'horse', getX(7), getZ(9));
+            createStone('cho', 'chariot', getX(8), getZ(9));
+        }
+
+        // === 특수 능력: 폭발 이펙트 (포) ===
+        function triggerExplosion(pos) {
+            // 시각 효과
+            const geo = new THREE.SphereGeometry(1, 16, 16);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.8 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.copy(pos);
+            scene.add(mesh);
+            explosionParticles.push({ mesh: mesh, scale: 1, life: 1.0 });
+
+            // 폭발 물리력 적용
+            stones.forEach(s => {
+                if (!s.active || s.isFalling || s.isJumping) return;
+                const dx = s.mesh.position.x - pos.x;
+                const dz = s.mesh.position.z - pos.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                
+                if (dist > 0 && dist < 25) { // 반경 25 이내
+                    const force = (25 - dist) * 0.08;
+                    s.vx += (dx / dist) * (force / s.mass);
+                    s.vz += (dz / dist) * (force / s.mass);
+                }
+            });
+        }
+
+        // === 입력 처리 ===
+        function getIntersectPoint(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const target = new THREE.Vector3();
+            raycaster.ray.intersectPlane(dragPlane, target);
+            return target;
+        }
+
+        function onPointerDown(event) {
+            if (gameState !== 'IDLE') return;
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const activeMeshes = stones.filter(s => s.active && !s.isFalling && !s.isJumping).map(s => s.mesh);
+            const intersects = raycaster.intersectObjects(activeMeshes);
+            
+            if (intersects.length > 0) {
+                const hitMesh = intersects[0].object;
+                const stoneData = stones.find(s => s.mesh === hitMesh);
+                
+                if (stoneData && stoneData.team === currentTurn) {
+                    selectedStone = stoneData;
+                    gameState = 'AIMING';
+                    dragStartPoint = getIntersectPoint(event);
+                    
+                    // 마(Horse) 특성: 파워 제한 해제
+                    MAX_POWER = selectedStone.type === 'horse' ? 10 : 5;
+                    
+                    aimLine.visible = true;
+                    updateAimLine(dragStartPoint);
+                }
+            }
+        }
+
+        function onPointerMove(event) {
+            if (gameState !== 'AIMING' || !selectedStone) return;
+            updateAimLine(getIntersectPoint(event));
+        }
+
+        function updateAimLine(currentPoint) {
+            if (!selectedStone || !currentPoint) return;
+            
+            const diff = new THREE.Vector3().subVectors(dragStartPoint, currentPoint);
+            
+            if (diff.length() * MULTIPLIER > MAX_POWER) {
+                diff.normalize().multiplyScalar(MAX_POWER / MULTIPLIER);
+            }
+            
+            const startPoint = selectedStone.mesh.position.clone();
+            const endPoint = startPoint.clone().add(diff);
+            
+            const positions = aimLine.geometry.attributes.position.array;
+            positions[0] = startPoint.x; positions[1] = STONE_HEIGHT; positions[2] = startPoint.z;
+            positions[3] = endPoint.x;   positions[4] = STONE_HEIGHT; positions[5] = endPoint.z;
+            aimLine.geometry.attributes.position.needsUpdate = true;
+        }
+
+        function onPointerUp(event) {
+            if (gameState === 'AIMING' && selectedStone) {
+                const currentPoint = getIntersectPoint(event);
+                const diff = new THREE.Vector3().subVectors(dragStartPoint, currentPoint);
+                
+                let vx = diff.x * MULTIPLIER;
+                let vz = diff.z * MULTIPLIER;
+                
+                const speed = Math.sqrt(vx*vx + vz*vz);
+                if (speed > MAX_POWER) {
+                    const ratio = MAX_POWER / speed;
+                    vx *= ratio;
+                    vz *= ratio;
+                }
+                
+                if (speed > 0.1) {
+                    selectedStone.vx = vx;
+                    selectedStone.vz = vz;
+                    gameState = 'MOVING';
+                } else {
+                    gameState = 'IDLE';
+                }
+                
+                aimLine.visible = false;
+                selectedStone = null;
+            }
+        }
+
+        // === 물리 엔진 ===
+        function checkCollisions() {
+            for (let i = 0; i < stones.length; i++) {
+                for (let j = i + 1; j < stones.length; j++) {
+                    const s1 = stones[i];
+                    const s2 = stones[j];
+                    
+                    if (!s1.active || !s2.active) continue;
+                    if (s1.isFalling || s2.isFalling || s1.isJumping || s2.isJumping) continue;
+
+                    const dx = s2.mesh.position.x - s1.mesh.position.x;
+                    const dz = s2.mesh.position.z - s1.mesh.position.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    const minDist = s1.radius + s2.radius;
+
+                    if (dist < minDist && dist > 0) {
+                        // 1. 겹침 방지 밀어내기 (질량에 반비례하여 밀림)
+                        const overlap = minDist - dist;
+                        const nx = dx / dist;
+                        const nz = dz / dist;
+                        
+                        const totalMass = s1.mass + s2.mass;
+                        const ratio1 = s2.mass / totalMass;
+                        const ratio2 = s1.mass / totalMass;
+
+                        s1.mesh.position.x -= nx * overlap * ratio1;
+                        s1.mesh.position.z -= nz * overlap * ratio1;
+                        s2.mesh.position.x += nx * overlap * ratio2;
+                        s2.mesh.position.z += nz * overlap * ratio2;
+
+                        // 2. 탄성 충돌 속도 계산 (질량 고려)
+                        const kx = s1.vx - s2.vx;
+                        const kz = s1.vz - s2.vz;
+                        
+                        // 충돌 축으로의 속도 성분
+                        const p = 2 * (nx * kx + nz * kz) / (s1.mass + s2.mass); 
+                        
+                        // 반발 계수
+                        const restitution = 0.85;
+                        
+                        s1.vx -= p * s2.mass * nx * restitution;
+                        s1.vz -= p * s2.mass * nz * restitution;
+                        s2.vx += p * s1.mass * nx * restitution;
+                        s2.vz += p * s1.mass * nz * restitution;
+
+                        // === 특수 능력 적용 ===
+                        // 포(Cannon): 폭발
+                        if (s1.type === 'cannon' && !s1.usedAbility) {
+                            s1.usedAbility = true;
+                            triggerExplosion(s1.mesh.position);
+                        }
+                        if (s2.type === 'cannon' && !s2.usedAbility) {
+                            s2.usedAbility = true;
+                            triggerExplosion(s2.mesh.position);
+                        }
+
+                        // 상(Elephant): 상대 띄우기
+                        if (s1.type === 'elephant') { s2.vy = 2.5; s2.isJumping = true; }
+                        if (s2.type === 'elephant') { s1.vy = 2.5; s1.isJumping = true; }
+                    }
+                }
+            }
+        }
+
+        function updatePhysics() {
+            let isAnyMoving = false;
+
+            for (let s of stones) {
+                if (!s.active) continue;
+
+                // 추락 처리
+                if (Math.abs(s.mesh.position.x) > BOARD_SIZE / 2 || Math.abs(s.mesh.position.z) > BOARD_SIZE / 2) {
+                    s.isFalling = true;
+                }
+
+                if (s.isFalling) {
+                    s.vy -= 0.2; 
+                    s.mesh.position.y += s.vy;
+                    s.mesh.position.x += s.vx;
+                    s.mesh.position.z += s.vz;
+                    isAnyMoving = true;
+
+                    if (s.mesh.position.y < -50) {
+                        s.active = false;
+                        s.mesh.visible = false;
+                    }
+                } else if (s.isJumping) {
+                    // 상(Elephant)에게 맞아서 공중에 뜬 상태
+                    s.vy -= 0.15; // 중력
+                    s.mesh.position.y += s.vy;
+                    s.mesh.position.x += s.vx;
+                    s.mesh.position.z += s.vz;
+                    isAnyMoving = true;
+
+                    // 바닥에 착지
+                    if (s.mesh.position.y <= STONE_HEIGHT / 2) {
+                        s.mesh.position.y = STONE_HEIGHT / 2;
+                        s.vy = 0;
+                        s.isJumping = false;
+                        // 착지 시 마찰력 강하게 주어 속도 감소
+                        s.vx *= 0.5;
+                        s.vz *= 0.5;
+                    }
+                } else {
+                    // 일반 이동
+                    s.mesh.position.x += s.vx;
+                    s.mesh.position.z += s.vz;
+
+                    // 차(Chariot) 특성: 마찰력이 매우 적음
+                    let friction = s.type === 'chariot' ? 0.992 : DEFAULT_FRICTION;
+                    
+                    s.vx *= friction;
+                    s.vz *= friction;
+
+                    if (Math.abs(s.vx) < 0.01 && Math.abs(s.vz) < 0.01) {
+                        s.vx = 0;
+                        s.vz = 0;
+                    } else {
+                        isAnyMoving = true;
+                    }
+                }
+            }
+
+            checkCollisions();
+
+            // 파티클 업데이트
+            for(let i = explosionParticles.length - 1; i >= 0; i--) {
+                let p = explosionParticles[i];
+                p.scale += 1.5;
+                p.life -= 0.04;
+                p.mesh.scale.set(p.scale, p.scale, p.scale);
+                p.mesh.material.opacity = p.life;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    explosionParticles.splice(i, 1);
+                }
+                isAnyMoving = true; // 파티클이 끝날 때까지 턴 대기
+            }
+
+            return isAnyMoving;
+        }
+
+        function updateGameFlow(isAnyMoving) {
+            if (gameState === 'MOVING' && !isAnyMoving) {
+                checkWinCondition();
+                if (gameState !== 'GAMEOVER') {
+                    switchTurn();
+                    gameState = 'IDLE';
+                }
+            }
+        }
+
+        function switchTurn() {
+            currentTurn = currentTurn === 'cho' ? 'han' : 'cho';
+            
+            // 카메라 타겟 앵글 변경
+            targetCamAngle = currentTurn === 'cho' ? 0 : Math.PI;
+
+            const indicator = document.getElementById('turn-indicator');
+            if (currentTurn === 'cho') {
+                indicator.textContent = '초(楚) 차례';
+                indicator.className = 'panel turn-cho';
+            } else {
+                indicator.textContent = '한(漢) 차례';
+                indicator.className = 'panel turn-han';
+            }
+        }
+
+        function checkWinCondition() {
+            let choAlive = stones.some(s => s.team === 'cho' && s.active);
+            let hanAlive = stones.some(s => s.team === 'han' && s.active);
+
+            if (!choAlive || !hanAlive) {
+                gameState = 'GAMEOVER';
+                const gameOverScreen = document.getElementById('game-over');
+                const winnerText = document.getElementById('winner-text');
+                
+                gameOverScreen.style.display = 'block';
+                
+                if (!choAlive && !hanAlive) {
+                    winnerText.textContent = '무승부!';
+                    winnerText.style.color = '#fff';
+                } else if (choAlive) {
+                    winnerText.textContent = '초(楚) 승리!';
+                    winnerText.style.color = '#00ff55';
+                } else {
+                    winnerText.textContent = '한(漢) 승리!';
+                    winnerText.style.color = '#ff3333';
+                }
+            }
+        }
+
+        window.resetGame = function() {
+            document.getElementById('game-over').style.display = 'none';
+            currentTurn = 'cho';
+            targetCamAngle = 0;
+            
+            document.getElementById('turn-indicator').textContent = '초(楚) 차례';
+            document.getElementById('turn-indicator').className = 'panel turn-cho';
+            
+            setupStones();
+            gameState = 'IDLE';
+        }
+
+        function updateCameraPosition() {
+            // 카메라 스무스 회전 처리 (턴이 바뀔 때 자신의 돌이 앞에 오도록)
+            // currentCamAngle에서 targetCamAngle로 부드럽게 보간
+            
+            // 각도 차이를 최소화하는 방향으로 보정 (0 -> PI 회전 시 자연스럽게)
+            let diff = targetCamAngle - currentCamAngle;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            
+            currentCamAngle += diff * 0.05;
+
+            const radius = 120;
+            camera.position.x = Math.sin(currentCamAngle) * radius;
+            camera.position.z = Math.cos(currentCamAngle) * radius;
+            camera.position.y = 100;
+            camera.lookAt(0, 0, 0);
+        }
+
+        // === 렌더링 루프 ===
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updateCameraPosition();
+            
+            if (gameState === 'MOVING' || gameState === 'IDLE') {
+                const isMoving = updatePhysics();
+                updateGameFlow(isMoving);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
