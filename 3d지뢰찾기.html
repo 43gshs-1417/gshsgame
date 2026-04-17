@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Minimal 3D Minesweeper</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Inter', sans-serif;
+            color: #fff;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* --- 초간결 인터페이스 --- */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding: 30px 40px;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.1rem;
+            font-weight: 500;
+            letter-spacing: 2px;
+            opacity: 0.8;
+        }
+
+        .hud-bottom {
+            text-align: center;
+            font-size: 0.85rem;
+            letter-spacing: 1.5px;
+            opacity: 0.5;
+            font-weight: 300;
+        }
+
+        /* --- 메인 메뉴 / 결과 화면 --- */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 10;
+            transition: opacity 0.4s;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none !important;
+        }
+
+        .title {
+            font-size: 3rem;
+            font-weight: 700;
+            letter-spacing: 12px;
+            margin-bottom: 60px;
+            text-transform: uppercase;
+        }
+
+        .menu-options {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .menu-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-family: 'Inter', sans-serif;
+            font-size: 1.2rem;
+            letter-spacing: 4px;
+            cursor: pointer;
+            transition: color 0.2s, transform 0.2s;
+            text-transform: uppercase;
+        }
+
+        .menu-btn:hover {
+            color: #fff;
+            transform: scale(1.05);
+        }
+
+        #result-title {
+            font-size: 2.5rem;
+            letter-spacing: 8px;
+            margin-bottom: 20px;
+        }
+
+        #result-desc {
+            font-size: 1rem;
+            opacity: 0.6;
+            margin-bottom: 40px;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameCanvas"></div>
+
+    <!-- 미니멀 HUD -->
+    <div id="ui-layer" class="hidden">
+        <div class="hud-top">
+            <span>MINES : <span id="mine-count">000</span></span>
+            <span>TIME : <span id="timer">000</span></span>
+        </div>
+        <div class="hud-bottom">
+            WASD - 이동 &nbsp;&nbsp;|&nbsp;&nbsp; ENTER - 파기 &nbsp;&nbsp;|&nbsp;&nbsp; SHIFT - 깃발
+        </div>
+    </div>
+
+    <!-- 메인 메뉴 -->
+    <div id="main-menu" class="overlay">
+        <div class="title">MINESWEEPER</div>
+        <div class="menu-options">
+            <button class="menu-btn" onclick="initGame(10, 10, 15)">초급 (10x10)</button>
+            <button class="menu-btn" onclick="initGame(25, 25, 100)">중급 (25x25)</button>
+            <button class="menu-btn" onclick="initGame(50, 50, 450)">고급 (50x50)</button>
+        </div>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div id="game-over-screen" class="overlay hidden">
+        <div class="title" id="result-title">GAME OVER</div>
+        <div id="result-desc">지뢰를 건드렸습니다.</div>
+        <button class="menu-btn" onclick="showMainMenu()">메인 메뉴로 돌아가기</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <script>
+        let scene, camera, renderer;
+        let board = [];
+        let blocksGroup = new THREE.Group();
+        
+        let CONFIG = { cols: 0, rows: 0, mines: 0, blockSize: 1, gap: 0.02 };
+        let gameActive = false, firstClick = true;
+        let flagsPlaced = 0, cellsRevealed = 0;
+        let timerInterval, timeElapsed = 0;
+
+        let playerGroup, playerLight;
+        let pX = 0, pY = 0; 
+        let playerTargetPos = new THREE.Vector3();
+        let targetRotation = 0;
+        let activeFlags = []; // 펄럭이는 애니메이션 처리를 위한 깃발 배열
+
+        // 빛의 영향을 받도록 모든 기본 매트리얼을 Standard로 변경 (플레이어 제외)
+        const mats = {
+            hidden: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9, metalness: 0.1 }),
+            revealed: new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1.0 }),
+            player: new THREE.MeshBasicMaterial({ color: 0xffffff }), // 플레이어(광원)는 항상 보이게 유지
+            mine: new THREE.MeshStandardMaterial({ color: 0xff3333, roughness: 0.5 }), // 빛을 받아야만 보임
+            flag: new THREE.MeshStandardMaterial({ color: 0x00ffaa, side: THREE.DoubleSide, roughness: 0.8 }), // 천도 빛을 받아야 보임
+            flagPole: new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 }),
+            neonWall: new THREE.MeshStandardMaterial({ color: 0x00E5FF, roughness: 0.8 }) // 벽도 빛을 받아야 보임
+        };
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+        const numberColors = ['#ffffff', '#aaddff', '#77ff77', '#ffff66', '#ffaa44', '#ff4444', '#ff0055', '#ff0000'];
+
+        window.onload = function() {
+            init3DEnvironment();
+            setupInput();
+            animate();
+        };
+
+        function init3DEnvironment() {
+            const canvas = document.getElementById('gameCanvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020202);
+            
+            // 시야 거리에 따른 완전한 안개 처리
+            scene.fog = new THREE.Fog(0x020202, 10, 18);
+
+            // 2D 느낌을 위한 카메라 (회전값이 고정되도록 초기 세팅만 함)
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 12, 0);
+            camera.rotation.set(-Math.PI / 2, 0, 0); // 화면이 돌지 않게 카메라를 수직(아래)으로 완전 고정
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            canvas.appendChild(renderer.domElement);
+
+            // 빛이 닿지 않는 곳이 완전히 안 보이도록 환경광(AmbientLight) 제거 (주석 처리)
+            // scene.add(new THREE.AmbientLight(0xffffff, 0.05));
+            
+            scene.add(blocksGroup);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function showMainMenu() {
+            document.getElementById('main-menu').classList.remove('hidden');
+            document.getElementById('ui-layer').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            
+            if(playerGroup) scene.remove(playerGroup);
+            while(blocksGroup.children.length > 0) blocksGroup.remove(blocksGroup.children[0]); 
+            activeFlags = []; // 깃발 배열 초기화
+        }
+
+        function initGame(cols, rows, mines) {
+            CONFIG.cols = cols; CONFIG.rows = rows; CONFIG.mines = mines;
+            
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('ui-layer').classList.remove('hidden');
+
+            gameActive = true; firstClick = true; flagsPlaced = 0; cellsRevealed = 0; timeElapsed = 0;
+            activeFlags = []; // 깃발 배열 초기화
+            clearInterval(timerInterval);
+            updateUI();
+            buildBoard();
+            
+            pX = Math.floor(cols / 2); pY = Math.floor(rows / 2);
+            createPlayer();
+            updatePlayerTargetPos(true);
+            
+            // 시작 시 카메라 위치 즉각 적용 (애니메이션 딜레이 제거)
+            camera.position.x = playerTargetPos.x;
+            camera.position.z = playerTargetPos.z;
+            
+            targetRotation = 0;
+        }
+
+        function buildBoard() {
+            while(blocksGroup.children.length > 0) blocksGroup.remove(blocksGroup.children[0]); 
+            board = [];
+
+            const totalWidth = CONFIG.cols * (CONFIG.blockSize + CONFIG.gap);
+            const totalHeight = CONFIG.rows * (CONFIG.blockSize + CONFIG.gap);
+            const offsetX = -totalWidth / 2 + CONFIG.blockSize / 2;
+            const offsetZ = -totalHeight / 2 + CONFIG.blockSize / 2;
+
+            for (let y = 0; y < CONFIG.rows; y++) {
+                board[y] = [];
+                for (let x = 0; x < CONFIG.cols; x++) {
+                    const mesh = new THREE.Mesh(boxGeo, mats.hidden);
+                    const posX = offsetX + x * (CONFIG.blockSize + CONFIG.gap);
+                    const posZ = offsetZ + y * (CONFIG.blockSize + CONFIG.gap);
+                    
+                    mesh.position.set(posX, 0, posZ);
+                    mesh.receiveShadow = true;
+                    mesh.castShadow = true;
+                    blocksGroup.add(mesh);
+
+                    board[y][x] = { x, y, posX, posZ, isMine: false, isRevealed: false, isFlagged: false, adjacentMines: 0, mesh };
+                }
+            }
+
+            // --- 테두리 형광선 (벽) 생성 ---
+            const exactWidth = CONFIG.cols * CONFIG.blockSize + (CONFIG.cols - 1) * CONFIG.gap;
+            const exactHeight = CONFIG.rows * CONFIG.blockSize + (CONFIG.rows - 1) * CONFIG.gap;
+            const centerX = -CONFIG.gap / 2;
+            const centerZ = -CONFIG.gap / 2;
+            const t = 0.05; // 선 두께
+            const padding = 0.08; // 보드와 선 사이의 간격
+
+            // 위쪽 벽
+            const topB = new THREE.Mesh(new THREE.BoxGeometry(exactWidth + (t+padding)*2, 0.05, t), mats.neonWall);
+            topB.position.set(centerX, 0.5, centerZ - exactHeight/2 - padding - t/2);
+            blocksGroup.add(topB);
+
+            // 아래쪽 벽
+            const botB = new THREE.Mesh(new THREE.BoxGeometry(exactWidth + (t+padding)*2, 0.05, t), mats.neonWall);
+            botB.position.set(centerX, 0.5, centerZ + exactHeight/2 + padding + t/2);
+            blocksGroup.add(botB);
+
+            // 왼쪽 벽
+            const leftB = new THREE.Mesh(new THREE.BoxGeometry(t, 0.05, exactHeight + (t+padding)*2), mats.neonWall);
+            leftB.position.set(centerX - exactWidth/2 - padding - t/2, 0.5, centerZ);
+            blocksGroup.add(leftB);
+
+            // 오른쪽 벽
+            const rightB = new THREE.Mesh(new THREE.BoxGeometry(t, 0.05, exactHeight + (t+padding)*2), mats.neonWall);
+            rightB.position.set(centerX + exactWidth/2 + padding + t/2, 0.5, centerZ);
+            blocksGroup.add(rightB);
+        }
+
+        function createPlayer() {
+            if (playerGroup) scene.remove(playerGroup);
+            playerGroup = new THREE.Group();
+
+            // 삼각형 플레이어 디자인
+            const shape = new THREE.Shape();
+            shape.moveTo(0, 0.3);
+            shape.lineTo(0.25, -0.3);
+            shape.lineTo(-0.25, -0.3);
+            shape.lineTo(0, 0.3);
+            const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false });
+            geo.rotateX(-Math.PI / 2);
+            const playerMesh = new THREE.Mesh(geo, mats.player);
+            playerMesh.position.y = 0.55;
+            playerGroup.add(playerMesh);
+
+            // 삼각 손전등
+            playerLight = new THREE.SpotLight(0xffffff, 8, 14, Math.PI / 3.5, 0.15, 1);
+            playerLight.position.set(0, 0.8, 0); 
+            playerLight.castShadow = true;
+            
+            const targetObj = new THREE.Object3D();
+            targetObj.position.set(0, -0.5, -4);
+            playerGroup.add(targetObj);
+            playerLight.target = targetObj;
+            playerGroup.add(playerLight);
+
+            // 플레이어 주변 보조 조명
+            const pointLight = new THREE.PointLight(0xffffff, 0.5, 3);
+            pointLight.position.y = 1;
+            playerGroup.add(pointLight);
+
+            scene.add(playerGroup);
+        }
+
+        function setupInput() {
+            window.addEventListener('keydown', (e) => {
+                if (!gameActive) return;
+                let moved = false;
+                switch(e.key.toLowerCase()) {
+                    case 'w': case 'arrowup':
+                        if (pY > 0) { pY--; moved = true; } targetRotation = 0; break;
+                    case 's': case 'arrowdown':
+                        if (pY < CONFIG.rows - 1) { pY++; moved = true; } targetRotation = Math.PI; break;
+                    case 'a': case 'arrowleft':
+                        if (pX > 0) { pX--; moved = true; } targetRotation = Math.PI / 2; break;
+                    case 'd': case 'arrowright':
+                        if (pX < CONFIG.cols - 1) { pX++; moved = true; } targetRotation = -Math.PI / 2; break;
+                    case 'enter': case ' ':
+                        e.preventDefault(); revealCell(pX, pY); break;
+                    case 'shift':
+                        e.preventDefault(); toggleFlag(pX, pY); break;
+                }
+                if (moved) updatePlayerTargetPos();
+            });
+        }
+
+        function updatePlayerTargetPos(instant = false) {
+            const cell = board[pY][pX];
+            playerTargetPos.set(cell.posX, 0, cell.posZ);
+            if (instant) playerGroup.position.copy(playerTargetPos);
+        }
+
+        function placeMines(firstX, firstY) {
+            let minesPlaced = 0;
+            while (minesPlaced < CONFIG.mines) {
+                const rx = Math.floor(Math.random() * CONFIG.cols);
+                const ry = Math.floor(Math.random() * CONFIG.rows);
+                if (!board[ry][rx].isMine && Math.abs(rx - firstX) > 1 && Math.abs(ry - firstY) > 1) {
+                    board[ry][rx].isMine = true;
+                    minesPlaced++;
+                }
+            }
+            for (let y = 0; y < CONFIG.rows; y++) {
+                for (let x = 0; x < CONFIG.cols; x++) {
+                    if (!board[y][x].isMine) board[y][x].adjacentMines = countMines(x, y);
+                }
+            }
+            timerInterval = setInterval(() => {
+                timeElapsed++;
+                document.getElementById('timer').innerText = timeElapsed.toString().padStart(3, '0');
+            }, 1000);
+        }
+
+        function countMines(x, y) {
+            let count = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < CONFIG.cols && ny >= 0 && ny < CONFIG.rows) {
+                        if (board[ny][nx].isMine) count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        function toggleFlag(x, y) {
+            const cell = board[y][x];
+            if (cell.isRevealed) return;
+            cell.isFlagged = !cell.isFlagged;
+            
+            if (cell.isFlagged) {
+                flagsPlaced++;
+                
+                // 깃발 그룹 생성
+                const flagGroup = new THREE.Group();
+                flagGroup.position.y = 0.55;
+
+                // 깃대 (Pole) - 탑다운 뷰에서 보이도록 화면의 상하(Z축) 방향으로 눕힘
+                const poleGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 8);
+                const pole = new THREE.Mesh(poleGeo, mats.flagPole);
+                pole.rotation.x = Math.PI / 2; // Z축을 따라 평행하게 눕힘
+                pole.position.set(0, 0, 0); // 그룹의 정중앙
+                flagGroup.add(pole);
+
+                // 깃발 천 (Fabric)
+                const clothGeo = new THREE.PlaneGeometry(0.4, 0.25, 10, 2);
+                const cloth = new THREE.Mesh(clothGeo, mats.flag);
+                cloth.rotation.x = -Math.PI / 2; // 탑다운 뷰에서 넓은 면이 보이도록 눕힘
+                // 깃대에 붙고, 폴의 윗부분(Z축 음수 방향)에 위치하도록 좌표 조정
+                cloth.position.set(0.2, 0, -0.15); 
+                flagGroup.add(cloth);
+
+                cell.mesh.add(flagGroup);
+                cell.flagObj = flagGroup;
+                
+                // 애니메이션 업데이트 루프에 추가
+                activeFlags.push(cloth);
+            } else {
+                flagsPlaced--;
+                if (cell.flagObj) {
+                    // 애니메이션 배열에서 제거
+                    const cloth = cell.flagObj.children[1];
+                    const index = activeFlags.indexOf(cloth);
+                    if (index > -1) activeFlags.splice(index, 1);
+                    
+                    cell.mesh.remove(cell.flagObj);
+                    cell.flagObj = null;
+                }
+            }
+            updateUI();
+        }
+
+        function revealCell(x, y, delay = 0) {
+            const cell = board[y][x];
+            if (cell.isRevealed || cell.isFlagged) return;
+
+            if (firstClick) { placeMines(x, y); firstClick = false; }
+            cell.isRevealed = true; cellsRevealed++;
+
+            setTimeout(() => {
+                cell.mesh.material = mats.revealed;
+                // 파내려가는 깊이를 조절
+                new TWEEN.Tween(cell.mesh.position).to({ y: -0.9 }, 200).easing(TWEEN.Easing.Quadratic.Out).onComplete(() => handleCellContent(cell)).start();
+            }, delay);
+
+            if (cell.isMine) {
+                triggerGameOver(false, cell);
+                return;
+            }
+
+            if (cell.adjacentMines === 0) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && nx < CONFIG.cols && ny >= 0 && ny < CONFIG.rows && !board[ny][nx].isRevealed) {
+                            revealCell(nx, ny, delay + 20);
+                        }
+                    }
+                }
+            }
+            checkWinCondition();
+        }
+
+        function handleCellContent(cell) {
+            if (cell.isMine) return;
+            if (cell.adjacentMines > 0) {
+                const sprite = createFlatNumber(cell.adjacentMines);
+                sprite.position.y = 0.5;
+                cell.mesh.add(sprite);
+            }
+        }
+
+        function createFlatNumber(num) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const color = numberColors[(num - 1) % numberColors.length];
+            
+            ctx.font = 'bold 80px Inter, sans-serif';
+            ctx.fillStyle = color;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(num, 64, 64);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            // 빛을 받아야만 보이도록 MeshStandardMaterial 사용
+            const material = new THREE.MeshStandardMaterial({ map: texture, transparent: true, depthTest: false, roughness: 0.8 });
+            const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), material);
+            plane.rotation.x = -Math.PI / 2;
+            return plane;
+        }
+
+        function triggerGameOver(isWin, deathCell = null) {
+            gameActive = false;
+            clearInterval(timerInterval);
+            document.getElementById('ui-layer').classList.add('hidden');
+
+            if (!isWin && deathCell) {
+                playerLight.color.setHex(0xff0000); 
+                const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const mineMesh = new THREE.Mesh(geo, mats.mine);
+                mineMesh.position.y = 0.5;
+                deathCell.mesh.add(mineMesh);
+                
+                for (let y = 0; y < CONFIG.rows; y++) {
+                    for (let x = 0; x < CONFIG.cols; x++) {
+                        if (board[y][x].isMine && !board[y][x].isRevealed) {
+                            board[y][x].mesh.material = mats.revealed;
+                            board[y][x].mesh.position.y = -0.9;
+                            const m = new THREE.Mesh(geo, mats.mine);
+                            m.position.y = 0.5;
+                            board[y][x].mesh.add(m);
+                        }
+                    }
+                }
+            } else if (isWin) {
+                playerLight.color.setHex(0x00ffaa);
+            }
+
+            setTimeout(() => {
+                const screen = document.getElementById('game-over-screen');
+                const title = document.getElementById('result-title');
+                const desc = document.getElementById('result-desc');
+                
+                screen.classList.remove('hidden');
+                if (isWin) {
+                    title.innerText = "CLEAR";
+                    desc.innerText = `소요 시간 : ${timeElapsed}초`;
+                } else {
+                    title.innerText = "GAME OVER";
+                    desc.innerText = "지뢰를 건드렸습니다.";
+                }
+            }, 1500);
+        }
+
+        function checkWinCondition() {
+            if (cellsRevealed === (CONFIG.cols * CONFIG.rows) - CONFIG.mines) triggerGameOver(true);
+        }
+
+        function updateUI() {
+            const left = Math.max(0, CONFIG.mines - flagsPlaced);
+            document.getElementById('mine-count').innerText = left.toString().padStart(3, '0');
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+
+            // --- 깃발 펄럭임 애니메이션 ---
+            const timeVal = time * 0.005;
+            activeFlags.forEach(cloth => {
+                const positions = cloth.geometry.attributes.position;
+                const uvs = cloth.geometry.attributes.uv;
+                
+                for (let i = 0; i < positions.count; i++) {
+                    const u = uvs.getX(i); // 0.0(깃대 측) ~ 1.0(바깥쪽)
+                    const v = uvs.getY(i); // 0.0(아래) ~ 1.0(위)
+                    
+                    // 기존 면적 유지 (가로 0.4, 세로 0.25)
+                    const baseX = (u - 0.5) * 0.4;
+                    const baseY = (v - 0.5) * 0.25;
+                    
+                    // u가 커질수록(깃대에서 멀어질수록) 진폭이 커지는 파동 계산
+                    // 눕혀진 상태이므로, local Y가 화면의 위아래(글로벌 Z), local Z가 입체적인 높이(글로벌 Y)가 됨
+                    const waveY = Math.sin(u * 10 - timeVal) * (u * 0.15); // 좌우(탑다운 기준 상하) 펄럭임
+                    const waveZ = Math.cos(u * 10 - timeVal) * (u * 0.05); // 상하(입체감) 펄럭임
+                    
+                    positions.setX(i, baseX);
+                    positions.setY(i, baseY + waveY);
+                    positions.setZ(i, waveZ);
+                }
+                positions.needsUpdate = true; // 정점 정보가 갱신되었음을 알림
+            });
+
+            if (gameActive && playerGroup) {
+                // 부드러운 위치 이동
+                playerGroup.position.lerp(playerTargetPos, 0.15);
+
+                // 플레이어만 회전
+                let diff = targetRotation - playerGroup.rotation.y;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                playerGroup.rotation.y += diff * 0.2;
+
+                // 화면(카메라) 회전 제거: 오직 위치(X, Z)만 부드럽게 따라가도록 고정
+                camera.position.x += (playerGroup.position.x - camera.position.x) * 0.15;
+                camera.position.z += (playerGroup.position.z - camera.position.z) * 0.15;
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
