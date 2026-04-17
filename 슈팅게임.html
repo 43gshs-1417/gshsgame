@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>우주 방어선 - 전술 슈팅</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tungsten:wght@600&family=Oswald:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f1923; color: #ece8e1; font-family: 'Oswald', sans-serif; touch-action: none; user-select: none; }
+        canvas { display: block; margin: 0 auto; background-color: #0f1923; }
+        .full-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; text-transform: uppercase; }
+        .panel { pointer-events: auto; background: #0f1923; border: 2px solid #333; position: relative; }
+        .btn-valo { background-color: #ff4655; color: #ece8e1; position: relative; overflow: hidden; transition: all 0.2s ease; cursor: pointer; }
+        .btn-valo:hover { background-color: #ece8e1; color: #ff4655; }
+        
+        /* 인게임 HUD */
+        #hud { position: absolute; bottom: 20px; left: 20px; pointer-events: none; display: none; width: calc(100% - 40px); }
+        .health-bar-container { width: 300px; height: 24px; background: rgba(0,0,0,0.5); border: 2px solid #333; position: relative; overflow: hidden; margin-bottom: 5px; }
+        #hpBar { height: 100%; background: #ece8e1; transition: width 0.2s; }
+        .ult-bar-container { width: 300px; height: 12px; background: rgba(0,0,0,0.5); border: 1px solid #333; position: relative; overflow: hidden; }
+        #ultBar { height: 100%; background: #00ffcc; width: 0%; transition: width 0.2s; }
+        
+        /* 스킬 UI (PC) */
+        .skill-container { display: flex; gap: 15px; margin-top: 10px; }
+        .skill-slot { width: 50px; height: 50px; border: 2px solid #555; background: rgba(0,0,0,0.5); position: relative; display: flex; justify-content: center; align-items: center; font-weight: bold; }
+        .skill-cooldown { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255, 70, 85, 0.7); height: 0%; transition: height 0.1s; }
+        .skill-key { position: absolute; top: -10px; left: -10px; background: #333; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+        
+        /* 모바일 조작 버튼 */
+        #mobile-controls { position: absolute; bottom: 20px; right: 20px; display: none; gap: 10px; pointer-events: auto; flex-wrap: wrap; justify-content: flex-end; width: 150px;}
+        .action-btn { width: 55px; height: 55px; border-radius: 50%; background: rgba(255, 255, 255, 0.1); border: 2px solid #ece8e1; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); position: relative; overflow: hidden;}
+        .action-btn:active { transform: scale(0.95); }
+        .mobile-cd { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255, 70, 85, 0.7); height: 0%; pointer-events: none; }
+        
+        @media (max-width: 768px) {
+            #mobile-controls { display: flex; }
+            .health-bar-container, .ult-bar-container { width: 200px; }
+            .skill-container { display: none; }
+            #hud { bottom: auto; top: 60px; left: 10px; }
+        }
+
+        /* 캐릭터/난이도 선택 카드 */
+        .select-card { flex: 1; padding: 20px; border: 2px solid #333; cursor: pointer; transition: 0.2s; background: rgba(0,0,0,0.5); }
+        .select-card:hover { border-color: #ece8e1; transform: translateY(-5px); }
+        .agent-striker { border-color: #00ffcc; color: #00ffcc; }
+        .agent-vampire { border-color: #d946ef; color: #d946ef; }
+        .diff-easy { border-color: #10b981; color: #10b981; }
+        .diff-hard { border-color: #ff4655; color: #ff4655; }
+    </style>
+</head>
+<body class="h-screen w-screen relative">
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- 인게임 HUD -->
+    <div id="hud">
+        <div class="text-xl font-bold tracking-widest text-[#ece8e1] mb-1">HP: <span id="hpText">100</span> / 100</div>
+        <div class="health-bar-container">
+            <div id="hpBar"></div>
+        </div>
+        <div class="ult-bar-container mb-2">
+            <div id="ultBar"></div>
+        </div>
+        
+        <div class="skill-container">
+            <div class="skill-slot">
+                <div class="skill-key">SHIFT</div>
+                <div id="skill1Text">S1</div>
+                <div id="skill1CdOverlay" class="skill-cooldown"></div>
+            </div>
+            <div class="skill-slot">
+                <div class="skill-key">E</div>
+                <div id="skill2Text">S2</div>
+                <div id="skill2CdOverlay" class="skill-cooldown"></div>
+            </div>
+            <div class="skill-slot" style="border-color: #00ffcc;">
+                <div class="skill-key text-[#00ffcc]">X</div>
+                <div id="ultText" class="text-[#00ffcc]">ULT</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모바일 전용 액션 버튼 -->
+    <div id="mobile-controls">
+        <div class="action-btn" id="btnSkill1">S1<div id="mSkill1Cd" class="mobile-cd"></div></div>
+        <div class="action-btn" id="btnSkill2">S2<div id="mSkill2Cd" class="mobile-cd"></div></div>
+        <div class="action-btn w-full" id="btnUlt" style="border-color: #00ffcc; color: #00ffcc;">ULT</div>
+    </div>
+
+    <div class="full-layer">
+        <div class="absolute top-4 center text-2xl font-bold tracking-widest text-[#ece8e1] hidden" id="scoreDisplay">
+            SCORE: <span id="scoreEl" class="text-[#ff4655]">0</span>
+        </div>
+
+        <!-- 1. 난이도 선택 화면 -->
+        <div id="difficultyScreen" class="panel p-6 shadow-2xl flex flex-col items-center text-center max-w-2xl w-11/12 border-t-4 border-t-[#ece8e1]">
+            <h1 class="text-5xl font-bold mb-2 text-[#ece8e1] tracking-widest">TACTICAL <span class="text-[#ff4655]">STRIKE</span></h1>
+            <p class="text-gray-400 mb-8 text-lg tracking-wider">난이도를 선택하십시오.</p>
+            
+            <div class="flex flex-col md:flex-row gap-4 w-full mb-6 pointer-events-auto">
+                <div class="select-card diff-easy" onclick="selectDifficulty('EASY')">
+                    <h2 class="text-3xl font-bold mb-2">EASY</h2>
+                    <p class="text-sm text-gray-300">적의 이동 속도가 느리고 데미지가 적습니다.</p>
+                </div>
+                <div class="select-card diff-hard" onclick="selectDifficulty('HARD')">
+                    <h2 class="text-3xl font-bold mb-2">HARD</h2>
+                    <p class="text-sm text-gray-300">적들이 빠르고 강력하며 더 자주 등장합니다.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 캐릭터 선택 화면 -->
+        <div id="charSelectScreen" class="panel p-6 shadow-2xl flex flex-col items-center text-center max-w-2xl w-11/12 border-t-4 border-t-[#ece8e1] hidden">
+            <h1 class="text-4xl font-bold mb-6 text-[#ece8e1] tracking-widest">SELECT AGENT</h1>
+            
+            <div class="flex flex-col md:flex-row gap-4 w-full mb-6 pointer-events-auto">
+                <!-- STRIKER -->
+                <div class="select-card agent-striker" onclick="startGame('STRIKER')">
+                    <h2 class="text-3xl font-bold mb-2">STRIKER</h2>
+                    <p class="text-sm text-gray-400 mb-4 h-10">기동성과 화력에 특화된 요원</p>
+                    <div class="text-left text-sm space-y-1 text-gray-300">
+                        <p><strong class="text-[#00ffcc]">스킬1(SHIFT):</strong> 무적 대쉬 (순풍)</p>
+                        <p><strong class="text-[#00ffcc]">스킬2(E):</strong> 5갈래 검기 발사</p>
+                        <p><strong class="text-[#ff4655]">궁극기(X):</strong> 연사력 대폭증가 + 무한관통</p>
+                    </div>
+                </div>
+
+                <!-- VAMPIRE -->
+                <div class="select-card agent-vampire" onclick="startGame('VAMPIRE')">
+                    <h2 class="text-3xl font-bold mb-2">VAMPIRE</h2>
+                    <p class="text-sm text-gray-400 mb-4 h-10">적 처치 후 영혼을 흡수해 생존</p>
+                    <div class="text-left text-sm space-y-1 text-gray-300">
+                        <p><strong class="text-[#d946ef]">스킬1(SHIFT):</strong> 일시적 무적화 (무시)</p>
+                        <p><strong class="text-[#d946ef]">스킬2(E):</strong> 영혼 흡수하여 체력회복</p>
+                        <p><strong class="text-[#ff4655]">궁극기(X):</strong> 처치 시 자동회복 + 연사 증가</p>
+                    </div>
+                </div>
+            </div>
+            <p class="text-gray-500 text-sm">* 모바일은 화면 터치 후 드래그 시 자동 사격됩니다.</p>
+        </div>
+
+        <!-- 3. 게임 오버 화면 -->
+        <div id="gameOverScreen" class="panel p-8 shadow-2xl flex flex-col items-center text-center max-w-md w-11/12 border-t-4 border-t-[#ff4655] hidden">
+            <h2 class="text-4xl font-bold mb-2 text-[#ff4655] tracking-widest">MIA (작전 실패)</h2>
+            <p class="text-gray-400 mb-4 text-xl tracking-wider">최종 점수</p>
+            <h3 id="finalScoreEl" class="text-6xl font-bold text-[#ece8e1] mb-8">0</h3>
+            <button onclick="location.reload()" class="btn-valo w-full py-4 text-xl font-bold tracking-widest border border-[#ff4655]">
+                RESTART MISSION
+            </button>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('scoreEl');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const hud = document.getElementById('hud');
+const hpText = document.getElementById('hpText');
+const hpBar = document.getElementById('hpBar');
+const ultBar = document.getElementById('ultBar');
+
+const skill1CdOverlay = document.getElementById('skill1CdOverlay');
+const skill2CdOverlay = document.getElementById('skill2CdOverlay');
+const mSkill1Cd = document.getElementById('mSkill1Cd');
+const mSkill2Cd = document.getElementById('mSkill2Cd');
+const skill1Text = document.getElementById('skill1Text');
+const skill2Text = document.getElementById('skill2Text');
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// 게임 상태
+let gameLoopId;
+let score = 0;
+let isGameRunning = false;
+let frameCount = 0;
+let screenShakeTime = 0;
+let flashRedTimer = 0; 
+let selectedAgent = null;
+let currentDifficulty = 'EASY';
+
+// 난이도별 데미지 설정 변수
+let dmgHit = 10;
+let dmgMiss = 5;
+
+// 엔티티
+let player;
+let projectiles = [];
+let enemyProjectiles = [];
+let enemies = [];
+let particles = [];
+let floatingTexts = [];
+let soulOrbs = []; 
+
+const keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false, Space: false };
+
+function drawGrid() {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.lineWidth = 1;
+    const gridSize = 60;
+    ctx.beginPath();
+    for (let x = 0; x <= canvas.width; x += gridSize) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+    for (let y = 0; y <= canvas.height; y += gridSize) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+    ctx.stroke();
+}
+
+class Player {
+    constructor(x, y, agentType) {
+        this.x = x; this.y = y;
+        this.radius = 18;
+        this.agentType = agentType;
+        
+        this.maxHp = 100;
+        this.hp = 100;
+        this.baseSpeed = agentType === 'STRIKER' ? 8 : 7;
+        this.speed = this.baseSpeed;
+        this.color = agentType === 'STRIKER' ? '#00ffcc' : '#d946ef';
+        
+        this.skill1Cd = 0; this.skill1MaxCd = agentType === 'STRIKER' ? 180 : 300; 
+        this.skill2Cd = 0; this.skill2MaxCd = agentType === 'STRIKER' ? 300 : 180; 
+        
+        this.ultCharge = 0;
+        this.isUltActive = false;
+        this.ultTimer = 0;
+        
+        this.lastShotTime = 0;
+        this.shootInterval = 150; 
+        this.isDashing = false;
+        this.isEthereal = false; 
+        this.invincibleTimer = 0;
+        
+        this.velocityX = 0; this.velocityY = 0;
+
+        skill1Text.innerText = agentType === 'STRIKER' ? 'DASH' : '무시';
+        skill2Text.innerText = agentType === 'STRIKER' ? '검기' : '흡수';
+        document.getElementById('btnSkill1').firstChild.textContent = skill1Text.innerText;
+        document.getElementById('btnSkill2').firstChild.textContent = skill2Text.innerText;
+    }
+
+    draw() {
+        if (!this.isEthereal && this.invincibleTimer > 0 && Math.floor(Date.now() / 100) % 2 === 0) return; 
+
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        if (this.isDashing || this.isUltActive || this.isEthereal) {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = this.isUltActive ? '#ff4655' : this.color;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(0, -this.radius * 1.5); 
+        ctx.lineTo(this.radius, this.radius); 
+        ctx.lineTo(0, this.radius * 0.5); 
+        ctx.lineTo(-this.radius, this.radius); 
+        ctx.closePath();
+        
+        ctx.fillStyle = this.isEthereal ? 'rgba(217, 70, 239, 0.4)' : (this.isUltActive ? '#ff4655' : '#ece8e1');
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(0, -this.radius * 0.5);
+        ctx.lineTo(this.radius * 0.3, this.radius * 0.3);
+        ctx.lineTo(-this.radius * 0.3, this.radius * 0.3);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    update() {
+        let dx = 0; let dy = 0;
+        if (keys.ArrowLeft) dx -= 1; if (keys.ArrowRight) dx += 1;
+        if (keys.ArrowUp) dy -= 1; if (keys.ArrowDown) dy += 1;
+
+        if (dx !== 0 || dy !== 0) {
+            const length = Math.hypot(dx, dy);
+            this.velocityX = (dx / length) * this.speed;
+            this.velocityY = (dy / length) * this.speed;
+        } else if (!isDragging && !this.isDashing) {
+            this.velocityX = 0; this.velocityY = 0;
+        }
+
+        this.x += this.velocityX; this.y += this.velocityY;
+        this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+        this.y = Math.max(this.radius, Math.min(canvas.height - this.radius, this.y));
+
+        if (this.skill1Cd > 0) this.skill1Cd--;
+        if (this.skill2Cd > 0) this.skill2Cd--;
+        if (this.invincibleTimer > 0) this.invincibleTimer--;
+
+        if (this.isDashing && this.skill1Cd <= this.skill1MaxCd - 15) { 
+            this.isDashing = false; this.speed = this.baseSpeed;
+        }
+        if (this.isEthereal && this.skill1Cd <= this.skill1MaxCd - 120) { 
+            this.isEthereal = false; this.speed = this.baseSpeed;
+        }
+
+        if (this.isUltActive) {
+            this.ultTimer--;
+            this.ultCharge = (this.ultTimer / (this.agentType==='STRIKER'?300:420)) * 100; 
+            if (this.ultTimer <= 0) {
+                this.isUltActive = false; this.ultCharge = 0; this.shootInterval = 150;
+                floatingTexts.push(new FloatingText(this.x, this.y, "ULT END", '#ece8e1', 20));
+            }
+        }
+        
+        updateHUD();
+        this.draw();
+    }
+
+    shoot(timestamp) {
+        if (this.isEthereal) return; 
+
+        if (timestamp - this.lastShotTime > this.shootInterval) {
+            if (this.agentType === 'STRIKER' && this.isUltActive) {
+                projectiles.push(new Projectile(this.x, this.y, '#ff4655', 25, 0, true));
+            } else if (this.agentType === 'VAMPIRE' && this.isUltActive) {
+                projectiles.push(new Projectile(this.x - 5, this.y, '#ff4655', 22, 0, false));
+                projectiles.push(new Projectile(this.x + 5, this.y, '#ff4655', 22, 0, false));
+            } else {
+                projectiles.push(new Projectile(this.x, this.y - this.radius, '#ece8e1', 20, 0, false));
+            }
+            this.lastShotTime = timestamp;
+        }
+    }
+
+    takeDamage(amount, isPenalty = false) {
+        if (!isPenalty && (this.invincibleTimer > 0 || this.isDashing || this.isEthereal)) return;
+        
+        this.hp -= amount;
+        screenShakeTime = isPenalty ? 20 : 15;
+        
+        if (!isPenalty) {
+            this.invincibleTimer = 40; 
+            createParticles(this.x, this.y, '#ff4655', 20);
+        } else {
+            flashRedTimer = 15; 
+        }
+
+        if (this.hp <= 0) {
+            this.hp = 0;
+            gameOver();
+        }
+        updateHUD();
+    }
+
+    useSkill1() {
+        if (this.skill1Cd > 0) return;
+        
+        if (this.agentType === 'STRIKER') {
+            this.isDashing = true;
+            this.skill1Cd = this.skill1MaxCd;
+            this.speed = this.baseSpeed * 3.5;
+            if (this.velocityX === 0 && this.velocityY === 0) this.velocityY = -this.speed;
+            createParticles(this.x, this.y, this.color, 15);
+        } 
+        else if (this.agentType === 'VAMPIRE') {
+            this.isEthereal = true;
+            this.skill1Cd = this.skill1MaxCd;
+            this.speed = this.baseSpeed * 1.5;
+            floatingTexts.push(new FloatingText(this.x, this.y - 30, "DISMISS", this.color, 25));
+        }
+    }
+
+    useSkill2() {
+        if (this.skill2Cd > 0) return;
+
+        if (this.agentType === 'STRIKER') {
+            this.skill2Cd = this.skill2MaxCd;
+            for(let i = -2; i <= 2; i++) {
+                let angle = i * 0.15;
+                let vy = Math.cos(angle) * 22;
+                let vx = Math.sin(angle) * 22;
+                projectiles.push(new Projectile(this.x, this.y, this.color, vy, vx, true)); 
+            }
+        } 
+        else if (this.agentType === 'VAMPIRE') {
+            if (soulOrbs.length === 0) {
+                floatingTexts.push(new FloatingText(this.x, this.y - 30, "NO SOULS", '#ece8e1', 15));
+                return;
+            }
+            this.skill2Cd = this.skill2MaxCd;
+            let healed = 0;
+            soulOrbs.forEach(orb => {
+                createParticles(orb.x, orb.y, this.color, 10);
+                healed += 25; 
+            });
+            soulOrbs = []; 
+            
+            this.hp = Math.min(this.maxHp, this.hp + healed);
+            floatingTexts.push(new FloatingText(this.x, this.y - 30, `+${healed} HP`, '#10b981', 25));
+            updateHUD();
+        }
+    }
+
+    activateUlt() {
+        if (this.ultCharge >= 100 && !this.isUltActive) {
+            this.isUltActive = true;
+            if (this.agentType === 'STRIKER') {
+                this.ultTimer = 300; 
+                this.shootInterval = 80; 
+                floatingTexts.push(new FloatingText(this.x, this.y - 30, "BLADE STORM!", this.color, 30));
+            } else {
+                this.ultTimer = 420; 
+                this.shootInterval = 90;
+                floatingTexts.push(new FloatingText(this.x, this.y - 30, "EMPRESS!", '#ff4655', 30));
+            }
+            screenShakeTime = 10;
+        }
+    }
+}
+
+class Projectile {
+    constructor(x, y, color, velocityY, velocityX = 0, piercing = false) {
+        this.x = x; this.y = y; this.radius = 3; this.color = color;
+        this.velocityY = velocityY; this.velocityX = velocityX;
+        this.length = 30; this.piercing = piercing;
+        this.hitEnemies = [];
+    }
+    draw() {
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x - this.velocityX*1.5, this.y + this.length);
+        ctx.strokeStyle = this.color; ctx.lineWidth = this.radius; ctx.stroke();
+    }
+    update() {
+        this.draw();
+        this.y -= this.velocityY; this.x += this.velocityX;
+    }
+}
+
+class Enemy {
+    constructor(x, y, radius, type, health) {
+        this.x = x; this.y = y; this.radius = radius; this.type = type;
+        this.health = health; this.maxHealth = health;
+        this.color = type === 2 ? '#ff4655' : (type === 1 ? '#f59e0b' : '#3b82f6');
+        
+        // 난이도별 적 속도 설정
+        let baseVel = Math.random() * 1.5 + 1.5 + (score / 1500);
+        this.velocity = currentDifficulty === 'EASY' ? baseVel * 0.7 : baseVel * 1.3;
+        
+        this.id = Math.random(); this.timer = 0;
+    }
+
+    draw() {
+        ctx.save(); ctx.translate(this.x, this.y);
+        ctx.beginPath(); ctx.arc(0, -this.radius * 0.2, this.radius * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = this.color; ctx.fill();
+        ctx.beginPath(); ctx.rect(-this.radius * 0.7, this.radius * 0.4, this.radius * 1.4, this.radius * 0.8); ctx.fill();
+        
+        if(this.health < this.maxHealth) {
+            ctx.fillStyle = '#ff4655';
+            ctx.fillRect(-this.radius, -this.radius - 10, (this.radius * 2) * (this.health / this.maxHealth), 4);
+        }
+        ctx.restore();
+    }
+
+    update() {
+        this.timer++;
+        if (this.type === 0) this.y += this.velocity; 
+        else if (this.type === 1) { this.y += this.velocity; this.x += Math.sin(this.timer * 0.05) * (currentDifficulty==='EASY'?3:5); } 
+        else if (this.type === 2) {
+            let stopTime = currentDifficulty === 'EASY' ? 100 : 70;
+            if (this.timer < stopTime) this.y += this.velocity;
+            else if (this.timer === stopTime + 20) {
+                const angle = Math.atan2(player.y - this.y, player.x - this.x);
+                let projSpeed = currentDifficulty === 'EASY' ? 4 : 7;
+                enemyProjectiles.push({ x: this.x, y: this.y, vx: Math.cos(angle) * projSpeed, vy: Math.sin(angle) * projSpeed, radius: 5 });
+            } else if (this.timer > stopTime + 60) this.y += this.velocity;
+        }
+        this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+        this.draw();
+    }
+}
+
+class SoulOrb {
+    constructor(x, y) {
+        this.x = x; this.y = y; this.timer = 240; 
+        this.radius = 8;
+    }
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, this.timer / 60);
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius + Math.sin(frameCount*0.1)*3, 0, Math.PI*2);
+        ctx.fillStyle = '#d946ef'; ctx.shadowBlur = 15; ctx.shadowColor = '#d946ef'; ctx.fill();
+        ctx.restore();
+    }
+    update() { this.timer--; this.draw(); }
+}
+
+class Particle {
+    constructor(x, y, color, amount) {
+        this.x = x; this.y = y; this.color = color;
+        this.velocity = { x: (Math.random() - 0.5) * 12, y: (Math.random() - 0.5) * 12 };
+        this.alpha = 1; this.radius = Math.random() * 3 + 1;
+    }
+    draw() {
+        ctx.save(); ctx.globalAlpha = this.alpha;
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color; ctx.fill(); ctx.restore();
+    }
+    update() {
+        this.draw();
+        this.velocity.x *= 0.92; this.velocity.y *= 0.92;
+        this.x += this.velocity.x; this.y += this.velocity.y;
+        this.alpha -= 0.04; 
+    }
+}
+
+class FloatingText {
+    constructor(x, y, text, color = '#ff4655', size = 20) {
+        this.x = x; this.y = y; this.text = text; this.color = color; this.size = size;
+        this.alpha = 1; this.offsetY = 0;
+    }
+    draw() {
+        ctx.save(); ctx.globalAlpha = this.alpha; ctx.fillStyle = this.color;
+        ctx.font = `bold ${this.size}px Oswald, sans-serif`; ctx.textAlign = 'center';
+        ctx.fillText(this.text, this.x, this.y - this.offsetY); ctx.restore();
+    }
+    update() { this.draw(); this.offsetY += 1.5; this.alpha -= 0.02; }
+}
+
+function spawnEnemies() {
+    if (!isGameRunning) return;
+    
+    // 난이도별 스폰 빈도
+    let spawnRate;
+    if (currentDifficulty === 'EASY') {
+        spawnRate = Math.max(40, 100 - Math.floor(score / 100)); // 느리게 스폰
+    } else {
+        spawnRate = Math.max(15, 60 - Math.floor(score / 150)); // 빠르게 스폰
+    }
+    
+    if (frameCount % spawnRate === 0) {
+        const radius = 20;
+        const x = Math.random() * (canvas.width - radius * 2) + radius;
+        const y = -radius * 2;
+        
+        let type = 0; const rand = Math.random();
+        
+        // 하드 모드일수록 특수 적 등장 확률 높음
+        let shooterProb = currentDifficulty === 'EASY' ? 0.85 : 0.6;
+        let zigProb = currentDifficulty === 'EASY' ? 0.5 : 0.3;
+        
+        if (score > (currentDifficulty==='EASY'?800:400) && rand > shooterProb) type = 2; 
+        else if (score > (currentDifficulty==='EASY'?400:200) && rand > zigProb) type = 1; 
+
+        const health = type === 2 ? 3 : (type === 1 ? 2 : 1); 
+        enemies.push(new Enemy(x, y, radius, type, health));
+    }
+}
+
+function createParticles(x, y, color, amount) {
+    for (let i = 0; i < amount; i++) particles.push(new Particle(x, y, color));
+}
+
+function updateHUD() {
+    if(!player) return;
+    hpText.innerHTML = Math.max(0, Math.floor(player.hp));
+    hpBar.style.width = `${Math.max(0, player.hp)}%`;
+    hpBar.style.background = player.hp <= 30 ? '#ff4655' : '#ece8e1';
+    ultBar.style.width = `${Math.min(100, player.ultCharge)}%`;
+    
+    const s1Percent = (player.skill1Cd / player.skill1MaxCd) * 100;
+    const s2Percent = (player.skill2Cd / player.skill2MaxCd) * 100;
+    skill1CdOverlay.style.height = `${s1Percent}%`;
+    skill2CdOverlay.style.height = `${s2Percent}%`;
+    mSkill1Cd.style.height = `${s1Percent}%`;
+    mSkill2Cd.style.height = `${s2Percent}%`;
+}
+
+function addScoreAndCharge(amount) {
+    score += amount; scoreEl.innerHTML = score;
+    if (!player.isUltActive && player.ultCharge < 100) {
+        player.ultCharge += 15; 
+        if (player.ultCharge >= 100) floatingTexts.push(new FloatingText(player.x, player.y - 40, "ULT READY", '#00ffcc', 25));
+        updateHUD();
+    }
+}
+
+function animate(timestamp) {
+    if (!isGameRunning) return;
+    gameLoopId = requestAnimationFrame(animate);
+    frameCount++;
+
+    ctx.save();
+    
+    if (screenShakeTime > 0) {
+        ctx.translate((Math.random() - 0.5) * 15, (Math.random() - 0.5) * 15);
+        screenShakeTime--;
+    }
+
+    ctx.fillStyle = 'rgba(15, 25, 35, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    if (flashRedTimer > 0) {
+        ctx.fillStyle = `rgba(255, 70, 85, ${flashRedTimer * 0.02})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        flashRedTimer--;
+    }
+
+    drawGrid();
+
+    if (keys.Space || isDragging) player.shoot(timestamp);
+    player.update();
+    spawnEnemies();
+
+    for (let i = soulOrbs.length - 1; i >= 0; i--) {
+        if (soulOrbs[i].timer <= 0) soulOrbs.splice(i, 1);
+        else soulOrbs[i].update();
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        if (particles[i].alpha <= 0) particles.splice(i, 1); else particles[i].update();
+    }
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        if (floatingTexts[i].alpha <= 0) floatingTexts.splice(i, 1); else floatingTexts[i].update();
+    }
+
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i]; p.update();
+        if (p.y + p.length < 0 || p.x < 0 || p.x > canvas.width || p.y > canvas.height) projectiles.splice(i, 1);
+    }
+
+    for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+        const ep = enemyProjectiles[i];
+        ep.x += ep.vx; ep.y += ep.vy;
+        
+        ctx.beginPath(); ctx.arc(ep.x, ep.y, ep.radius, 0, Math.PI*2);
+        ctx.fillStyle = '#ff4655'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff4655'; ctx.fill(); ctx.shadowBlur = 0;
+
+        if (Math.hypot(player.x - ep.x, player.y - ep.y) - ep.radius - player.radius < 0) {
+            player.takeDamage(dmgHit); // 난이도별 데미지 적용
+            enemyProjectiles.splice(i, 1);
+            continue;
+        }
+        if (ep.y > canvas.height || ep.x < 0 || ep.x > canvas.width) enemyProjectiles.splice(i, 1);
+    }
+
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const enemy = enemies[i];
+        enemy.update();
+
+        // 적 놓침 페널티
+        if (enemy.y - enemy.radius > canvas.height) {
+            player.takeDamage(dmgMiss, true); // 난이도별 놓침 데미지 적용
+            floatingTexts.push(new FloatingText(canvas.width/2, canvas.height/2, `DEFENSE FAILED: -${dmgMiss} HP`, '#ff4655', 40));
+            enemies.splice(i, 1);
+            continue;
+        }
+
+        // 몸통 박치기
+        if (Math.hypot(player.x - enemy.x, player.y - enemy.y) - enemy.radius - player.radius < 0) {
+            player.takeDamage(dmgHit); // 난이도별 충돌 데미지 적용
+            createParticles(enemy.x, enemy.y, enemy.color, 15);
+            enemies.splice(i, 1);
+            continue;
+        }
+
+        // 총알 적중
+        for (let j = projectiles.length - 1; j >= 0; j--) {
+            const proj = projectiles[j];
+            if (proj.hitEnemies.includes(enemy.id)) continue; 
+
+            if (Math.hypot(proj.x - enemy.x, proj.y - enemy.y) - enemy.radius < 5) {
+                createParticles(proj.x, proj.y, '#ece8e1', 5);
+                
+                if (!proj.piercing) projectiles.splice(j, 1);
+                else proj.hitEnemies.push(enemy.id); 
+                
+                enemy.health -= player.isUltActive ? 2 : 1;
+                
+                if (enemy.health <= 0) {
+                    createParticles(enemy.x, enemy.y, enemy.color, 20);
+                    addScoreAndCharge(100);
+                    
+                    if (player.agentType === 'VAMPIRE') {
+                        if (player.isUltActive) {
+                            player.hp = Math.min(player.maxHp, player.hp + 10);
+                            floatingTexts.push(new FloatingText(player.x, player.y, "+10 HP", '#d946ef', 15));
+                        } else {
+                            soulOrbs.push(new SoulOrb(enemy.x, enemy.y));
+                        }
+                    }
+                    enemies.splice(i, 1);
+                } else {
+                    enemy.y -= 5;
+                }
+                break;
+            }
+        }
+    }
+
+    ctx.restore();
+}
+
+// 흐름 제어 함수들
+function selectDifficulty(diff) {
+    currentDifficulty = diff;
+    if (diff === 'EASY') {
+        dmgHit = 10;
+        dmgMiss = 5;
+    } else {
+        dmgHit = 20;
+        dmgMiss = 15;
+    }
+    document.getElementById('difficultyScreen').classList.add('hidden');
+    document.getElementById('charSelectScreen').classList.remove('hidden');
+}
+
+function startGame(agent) {
+    selectedAgent = agent;
+    document.getElementById('charSelectScreen').classList.add('hidden');
+    initGame();
+}
+
+function initGame() {
+    score = 0; scoreEl.innerHTML = score;
+    frameCount = 0; soulOrbs = [];
+    projectiles = []; enemyProjectiles = []; enemies = []; particles = []; floatingTexts = [];
+    
+    player = new Player(canvas.width / 2, canvas.height - 100, selectedAgent);
+    updateHUD();
+    
+    scoreDisplay.classList.remove('hidden');
+    document.getElementById('gameOverScreen').classList.add('hidden');
+    hud.style.display = 'block';
+    
+    isGameRunning = true;
+    requestAnimationFrame(animate);
+}
+
+function gameOver() {
+    isGameRunning = false;
+    cancelAnimationFrame(gameLoopId);
+    createParticles(player.x, player.y, '#ff4655', 50);
+    hud.style.display = 'none';
+    scoreDisplay.classList.add('hidden');
+    
+    setTimeout(() => {
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('finalScoreEl').innerHTML = score;
+    }, 1000);
+}
+
+// --- 이벤트 리스너 ---
+document.getElementById('btnSkill1').addEventListener('touchstart', (e) => { e.preventDefault(); player.useSkill1(); });
+document.getElementById('btnSkill1').addEventListener('mousedown', () => player.useSkill1());
+document.getElementById('btnSkill2').addEventListener('touchstart', (e) => { e.preventDefault(); player.useSkill2(); });
+document.getElementById('btnSkill2').addEventListener('mousedown', () => player.useSkill2());
+document.getElementById('btnUlt').addEventListener('touchstart', (e) => { e.preventDefault(); player.activateUlt(); });
+document.getElementById('btnUlt').addEventListener('mousedown', () => player.activateUlt());
+
+window.addEventListener('keydown', (e) => {
+    if (!isGameRunning) return;
+    if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') player.useSkill1();
+    if (e.code === 'KeyE') player.useSkill2();
+    if (e.code === 'KeyX') player.activateUlt();
+});
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+});
+
+// 터치/마우스 조작
+let isDragging = false;
+function handleMoveStart(e) { if(!isGameRunning) return; isDragging = true; updatePlayerPos(e); }
+function handleMove(e) { if(!isDragging || !isGameRunning) return; updatePlayerPos(e); }
+function handleMoveEnd() { isDragging = false; if(player && !player.isDashing) { player.velocityX = 0; player.velocityY = 0; } }
+
+function updatePlayerPos(e) {
+    const targetX = e.touches ? e.touches[0].clientX : e.clientX;
+    const targetY = (e.touches ? e.touches[0].clientY : e.clientY) - 60;
+    
+    const dx = targetX - player.x; const dy = targetY - player.y;
+    const dist = Math.hypot(dx, dy);
+    
+    if (dist > 5) {
+        player.velocityX = (dx / dist) * player.speed;
+        player.velocityY = (dy / dist) * player.speed;
+    } else {
+        player.velocityX = 0; player.velocityY = 0;
+    }
+}
+
+canvas.addEventListener('touchstart', handleMoveStart, {passive: false});
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); }, {passive: false});
+canvas.addEventListener('touchend', handleMoveEnd);
+canvas.addEventListener('mousedown', handleMoveStart);
+canvas.addEventListener('mousemove', handleMove);
+window.addEventListener('mouseup', handleMoveEnd);
+
+// 초기 화면 렌더링
+ctx.fillStyle = '#0f1923';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+drawGrid();
+
+</script>
+</body>
+</html>
