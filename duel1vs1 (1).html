@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPS Arena 1vs1 - Damage Balanced</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Inter:wght@400;700;900&display=swap');
+        body { margin: 0; background: #000; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
+        .view { width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; z-index: 10; }
+        .hidden { display: none !important; }
+        .btn { padding: 12px 24px; background: #2563eb; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s; user-select: none; border: none; color: white; min-width: 140px; text-align: center; font-size: 0.9rem; }
+        .btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+        
+        .digital-title {
+            font-family: 'Black Han Sans', sans-serif;
+            font-size: 5rem;
+            color: #ff0000;
+            text-transform: uppercase;
+            position: relative;
+            letter-spacing: -2px;
+            font-style: italic;
+            text-shadow: 2px 2px 0px #000, -2px -2px 0px #300;
+        }
+        .digital-title::before {
+            content: attr(data-text);
+            position: absolute;
+            left: -2px;
+            text-shadow: 2px 0 #fff;
+            top: 0;
+            color: #ff0000;
+            background: black;
+            overflow: hidden;
+            clip: rect(0, 900px, 0, 0);
+            animation: noise-anim-2 3s infinite linear alternate-reverse;
+        }
+        @keyframes noise-anim-2 {
+            0% { clip: rect(10px, 9999px, 20px, 0); }
+            20% { clip: rect(40px, 9999px, 50px, 0); }
+            40% { clip: rect(70px, 9999px, 80px, 0); }
+            60% { clip: rect(20px, 9999px, 30px, 0); }
+            80% { clip: rect(50px, 9999px, 60px, 0); }
+            100% { clip: rect(80px, 9999px, 90px, 0); }
+        }
+
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); pointer-events: none; z-index: 100; border: 1.5px solid rgba(0,255,0,0.8); border-radius: 50%; }
+        #sniper-scope { position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.98) 41%); display: none; z-index: 90; border: 20vh solid black; box-sizing: border-box; }
+        .hit-overlay { position: absolute; inset: 0; background: radial-gradient(circle, transparent 60%, rgba(255,0,0,0.3) 100%); pointer-events: none; opacity: 0; transition: opacity 0.1s; z-index: 110; }
+        
+        #countdown-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); z-index: 300; pointer-events: none; }
+        #countdown-text { font-family: 'Black Han Sans', sans-serif; font-size: 8rem; color: #fff; text-shadow: 0 0 30px rgba(37, 99, 235, 1); }
+        
+        #game-over { position: absolute; inset: 0; background: rgba(0,0,0,0.95); z-index: 500; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .ammo-ui { font-family: 'Black Han Sans', sans-serif; }
+        .ui-panel { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 16px; }
+    </style>
+</head>
+<body>
+
+    <div id="hit-overlay" class="hit-overlay"></div>
+    <div id="sniper-scope"></div>
+    
+    <div id="countdown-overlay">
+        <div id="countdown-text">3</div>
+    </div>
+
+    <div id="game-over">
+        <h2 id="game-result-text" class="text-6xl font-black mb-4 italic tracking-tighter">YOU WIN</h2>
+        <p id="game-auto-msg" class="text-gray-400 mb-8 text-center text-lg">
+            <span id="auto-exit-timer">5</span>초 뒤 자동으로 홈으로 돌아갑니다.
+        </p>
+        <button class="btn" onclick="location.reload()">지금 홈으로 가기</button>
+    </div>
+
+    <div id="view-home" class="view">
+        <h1 class="digital-title mb-8 italic tracking-tighter" data-text="DUELS 1 VS 1">DUELS 1 VS 1</h1>
+        <div class="mb-8 flex flex-col items-center">
+            <p class="text-[10px] text-gray-500 mb-2 uppercase tracking-widest">내 접속 ID</p>
+            <span id="display-my-id" class="bg-red-600/10 border border-red-600/30 px-6 py-3 rounded-lg text-red-500 font-mono text-xl mb-6">연결 중...</span>
+            <input type="text" id="join-id-input" class="bg-white/5 border border-white/10 px-4 py-3 rounded-lg w-64 text-white outline-none focus:border-red-500 text-center text-md mb-4" placeholder="상대방 ID 입력">
+            <div class="flex gap-3">
+                <button class="btn bg-red-600 hover:bg-red-700" onclick="initGuest()">대전 참가</button>
+                <button class="btn bg-gray-700" onclick="startSoloMode()">연습하기</button>
+            </div>
+            <p class="text-gray-500 text-[10px] mt-6 uppercase tracking-wider">연습 모드 종료: '/' 키 | 점프: Space</p>
+        </div>
+    </div>
+
+    <div id="view-select" class="view hidden bg-black">
+        <h2 class="text-4xl font-black mb-2 italic">무기 선택</h2>
+        <p class="text-red-500 mb-10 font-bold text-sm uppercase tracking-widest">ROUND <span id="round-number">1</span></p>
+        <div class="flex gap-8">
+            <button onclick="selectWeapon('AK47')" class="bg-white/5 border border-white/10 p-8 rounded-2xl hover:border-red-500 transition-all w-56 group text-center">
+                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🔫</div>
+                <h3 class="text-xl font-bold">AK-47</h3>
+                <p class="text-gray-400 mt-1 text-sm">연사 가능 / 데미지 8</p>
+            </button>
+            <button onclick="selectWeapon('AWP')" class="bg-white/5 border border-white/10 p-8 rounded-2xl hover:border-red-600 transition-all w-56 group text-center">
+                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🎯</div>
+                <h3 class="text-xl font-bold">AWP</h3>
+                <p class="text-gray-400 mt-1 text-sm">저격 / 데미지 40</p>
+            </button>
+        </div>
+    </div>
+
+    <div id="view-game" class="view hidden">
+        <div id="canvas-container" class="absolute inset-0"></div>
+        <div id="lock-notice" class="absolute bg-black/90 p-8 rounded-2xl border border-red-500 text-center z-[200]">
+            <p class="text-2xl font-black mb-4 italic" id="notice-text">무장 완료</p>
+            <p class="text-red-400 mb-6 text-sm" id="waiting-msg">마우스 클릭으로 고정하고 시작하세요</p>
+            <button class="btn bg-red-600 hover:bg-red-700" onclick="requestLock()">전투 시작</button>
+        </div>
+        
+        <div class="absolute inset-0 pointer-events-none z-20 p-6 flex flex-col justify-between">
+            <div class="flex justify-between items-start">
+                <div class="ui-panel w-28">
+                    <p class="text-green-500 text-[8px] font-bold mb-0.5">HEALTH</p>
+                    <div id="hp-text" class="text-2xl font-black italic ammo-ui text-white">100</div>
+                </div>
+
+                <div class="ui-panel flex gap-4 items-center px-6 py-2 border-b-2 border-red-500/50">
+                    <div class="text-center">
+                        <p class="text-[8px] text-red-400 font-bold leading-none mb-1">YOU</p>
+                        <div id="my-score-ui" class="text-xl font-black italic ammo-ui leading-none">0</div>
+                    </div>
+                    <div class="text-xs font-black text-white/20 italic">VS</div>
+                    <div class="text-center">
+                        <p class="text-[8px] text-red-500 font-bold leading-none mb-1">ENEMY</p>
+                        <div id="enemy-score-ui" class="text-xl font-black italic ammo-ui leading-none">0</div>
+                    </div>
+                </div>
+
+                <div class="ui-panel text-right w-28">
+                    <p id="weapon-name-ui" class="text-red-400 text-[8px] font-bold mb-0.5 italic">WEAPON</p>
+                    <div class="text-2xl font-black italic ammo-ui text-white">
+                        <span id="ammo-cur">0</span><span class="text-sm text-white/30">/</span><span id="ammo-max-ui" class="text-sm text-white/30">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="crosshair"></div>
+            
+            <div class="w-full flex justify-center pb-4">
+                <div id="status-msg" class="text-sm font-black italic tracking-widest text-red-500 bg-black/40 px-4 py-1 rounded-full border border-white/5">READY</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, clock, opponent, opponentBody;
+        let peer, conn, isHost = false, isSolo = false;
+        let myHP = 100, myScore = 0, enemyScore = 0;
+        const WIN_SCORE = 3; 
+        let isGameOver = false, isFrozen = true;
+
+        let velocity = new THREE.Vector3(0, 0, 0);
+        let canJump = false;
+        const GRAVITY = 30.0;
+        const JUMP_FORCE = 12.0;
+
+        let moveState = { f:0, b:0, l:0, r:0, jump:0 };
+        let lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        let targetRecoilX = 0; 
+        
+        // Weapon Data: Updated as requested (AK-47: 8, AWP: 40)
+        const weapons = {
+            'AK47': { name: 'AK-47', damage: 8, ammo: 30, maxAmmo: 30, rpm: 600, recoil: 0.03, zoom: 0.8, reloadTime: 1800 },
+            'AWP': { name: 'AWP', damage: 40, ammo: 5, maxAmmo: 5, rpm: 45, recoil: 0.15, zoom: 0.15, reloadTime: 2500 }
+        };
+        let primaryType = 'AK47', currentWeapon = null;
+        let isZooming = false, fireInterval = null, isReloading = false;
+        let weaponGroup, gunMesh, muzzleFlash;
+        let imReady = false, enemyReady = false;
+
+        peer = new Peer();
+        peer.on('open', id => document.getElementById('display-my-id').innerText = id);
+        peer.on('connection', c => { if(!conn) { conn = c; isHost = true; setupNetwork(); } });
+
+        function initGuest() {
+            const tid = document.getElementById('join-id-input').value.trim();
+            if(!tid) return;
+            conn = peer.connect(tid);
+            isHost = false; setupNetwork();
+        }
+
+        function setupNetwork() {
+            conn.on('open', () => showView('select'));
+            conn.on('data', data => {
+                if(data.type === 'sync' && opponent) {
+                    opponent.position.set(data.p.x, data.p.y, data.p.z);
+                    opponent.rotation.y = data.r;
+                    opponent.visible = true;
+                } else if(data.type === 'damage') handleDamage(data.val);
+                else if(data.type === 'i_ready') { enemyReady = true; checkBothReady(); }
+                else if(data.type === 'scored') {
+                    enemyScore = data.enemyNewScore; 
+                    updateUI();
+                    if(enemyScore >= WIN_SCORE) endGame(false);
+                    else resetRound();
+                }
+            });
+        }
+
+        function checkBothReady() { if(imReady && enemyReady) startCountdown(); }
+        function startSoloMode() { isSolo = true; enemyReady = true; showView('select'); }
+        function showView(id) { 
+            document.querySelectorAll('.view').forEach(v => v.classList.add('hidden')); 
+            document.getElementById(`view-${id}`).classList.remove('hidden'); 
+        }
+
+        function selectWeapon(type) {
+            primaryType = type;
+            currentWeapon = { ...weapons[type] };
+            if(!scene) initEngine();
+            else updateWeaponVisuals();
+            showView('game');
+            imReady = false;
+            document.getElementById('lock-notice').style.display = 'block';
+        }
+
+        function updateWeaponVisuals() {
+            if(isZooming) toggleZoom(false);
+            gunMesh.scale.set(1, 1, primaryType === 'AWP' ? 1.5 : 1);
+            updateUI();
+        }
+
+        function requestLock() { if(!isGameOver) document.body.requestPointerLock(); }
+
+        document.addEventListener('pointerlockchange', () => {
+            const isLocked = document.pointerLockElement !== null;
+            document.getElementById('lock-notice').style.display = isLocked ? 'none' : 'block';
+            if(isLocked && !imReady) {
+                imReady = true;
+                if(!isSolo && conn) conn.send({ type: 'i_ready' });
+                checkBothReady();
+            }
+        });
+
+        function startCountdown() {
+            isFrozen = true;
+            const overlay = document.getElementById('countdown-overlay');
+            overlay.style.display = 'flex';
+            let count = 3;
+            document.getElementById('countdown-text').innerText = count;
+            const timer = setInterval(() => {
+                count--;
+                if(count > 0) document.getElementById('countdown-text').innerText = count;
+                else if(count === 0) document.getElementById('countdown-text').innerText = "GO!";
+                else { clearInterval(timer); overlay.style.display = 'none'; isFrozen = false; }
+            }, 1000);
+        }
+
+        function handleDamage(val) {
+            if(isGameOver || isFrozen) return;
+            myHP -= val;
+            document.getElementById('hit-overlay').style.opacity = '1';
+            setTimeout(() => document.getElementById('hit-overlay').style.opacity = '0', 100);
+            if(myHP <= 0) {
+                myHP = 0;
+                if(!isSolo && conn) {
+                    const newEnemyScore = enemyScore + 1;
+                    conn.send({ type: 'scored', enemyNewScore: newEnemyScore });
+                    enemyScore = newEnemyScore;
+                    updateUI();
+                    if(enemyScore >= WIN_SCORE) endGame(false);
+                    else resetRound();
+                } else { 
+                    myHP = 100; spawnPlayer(); 
+                    updateUI();
+                }
+            }
+            updateUI();
+        }
+
+        function resetRound() {
+            isFrozen = true; myHP = 100; isReloading = false; imReady = false; enemyReady = isSolo;
+            velocity.set(0,0,0);
+            if(isZooming) toggleZoom(false);
+            stopFiring();
+            spawnPlayer();
+            updateUI();
+            setTimeout(() => {
+                if(!isGameOver) {
+                    if (document.pointerLockElement) document.exitPointerLock();
+                    document.getElementById('round-number').innerText = (myScore + enemyScore + 1);
+                    showView('select');
+                }
+            }, 1000);
+        }
+
+        function initEngine() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050505);
+            scene.fog = new THREE.Fog(0x050505, 10, 100);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+            clock = new THREE.Clock();
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(10, 20, 10);
+            scene.add(sun);
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            floor.rotation.x = -Math.PI/2;
+            scene.add(floor);
+            const box = (w, h, d, x, y, z) => {
+                const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+                b.position.set(x, y, z); scene.add(b);
+            };
+            box(100, 10, 2, 0, 5, 50); box(100, 10, 2, 0, 5, -50);
+            box(2, 10, 100, 50, 5, 0); box(2, 10, 100, -50, 5, 0);
+            box(6, 6, 6, 15, 3, 15); box(8, 4, 8, -20, 2, -10);
+            opponent = new THREE.Group();
+            opponentBody = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 0.6), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+            opponentBody.position.y = 0.9;
+            opponent.add(opponentBody);
+            scene.add(opponent);
+            weaponGroup = new THREE.Group();
+            camera.add(weaponGroup);
+            scene.add(camera);
+            gunMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.6), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            gunMesh.position.set(0.3, -0.2, -0.4);
+            weaponGroup.add(gunMesh);
+            muzzleFlash = new THREE.Mesh(new THREE.SphereGeometry(0.04), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
+            muzzleFlash.position.set(0.3, -0.2, -0.7);
+            muzzleFlash.visible = false;
+            weaponGroup.add(muzzleFlash);
+            spawnPlayer();
+            addControls();
+            updateUI();
+            animate();
+        }
+
+        function spawnPlayer() { camera.position.set(0, 1.7, isHost ? 40 : -40); lookEuler.y = isHost ? Math.PI : 0; lookEuler.x = 0; targetRecoilX = 0; velocity.set(0,0,0); }
+
+        function addControls() {
+            window.onkeydown = e => { 
+                if(isGameOver) return; 
+                if(e.key === '/') location.reload();
+                if(isFrozen) return; 
+                if(e.code === 'KeyW') moveState.f = 1; 
+                if(e.code === 'KeyS') moveState.b = 1; 
+                if(e.code === 'KeyA') moveState.l = 1; 
+                if(e.code === 'KeyD') moveState.r = 1; 
+                if(e.code === 'Space') moveState.jump = 1;
+                if(e.code === 'KeyR') reload(); 
+            };
+            window.onkeyup = e => { 
+                if(e.code === 'KeyW') moveState.f = 0; 
+                if(e.code === 'KeyS') moveState.b = 0; 
+                if(e.code === 'KeyA') moveState.l = 0; 
+                if(e.code === 'KeyD') moveState.r = 0; 
+                if(e.code === 'Space') moveState.jump = 0;
+            };
+            window.onmousedown = e => { 
+                if(isFrozen || isGameOver || document.getElementById('view-game').classList.contains('hidden')) return; 
+                if(e.button === 0) startFiring(); 
+                if(e.button === 2) toggleZoom(true); 
+            };
+            window.onmouseup = e => { 
+                if(e.button === 0) stopFiring(); 
+                if(e.button === 2) toggleZoom(false); 
+            };
+            document.onmousemove = e => { 
+                if(document.pointerLockElement && !isFrozen && !isGameOver) { 
+                    const s = isZooming ? 0.0005 : 0.002; 
+                    lookEuler.y -= e.movementX * s; 
+                    lookEuler.x -= e.movementY * s; 
+                    lookEuler.x = Math.max(-1.5, Math.min(1.5, lookEuler.x)); 
+                    targetRecoilX = lookEuler.x; 
+                } 
+            };
+        }
+
+        function startFiring() { if(isReloading || isGameOver || isFrozen) return; fire(); if(primaryType === 'AK47') { if(fireInterval) clearInterval(fireInterval); fireInterval = setInterval(fire, 60000 / weapons.AK47.rpm); } }
+        function stopFiring() { if(fireInterval) clearInterval(fireInterval); fireInterval = null; }
+
+        function fire() {
+            if(!currentWeapon || currentWeapon.ammo <= 0 || isReloading || isFrozen) return;
+            currentWeapon.ammo--; updateUI();
+            muzzleFlash.visible = true; setTimeout(() => muzzleFlash.visible = false, 50);
+            gunMesh.position.z += 0.08;
+            lookEuler.x += currentWeapon.recoil;
+            
+            const ray = new THREE.Raycaster();
+            ray.set(camera.position, new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion));
+            const hits = ray.intersectObject(opponentBody);
+            
+            if(hits.length > 0 && opponent.visible) { 
+                // Using currentWeapon.damage (AK: 8, AWP: 40)
+                if(!isSolo && conn) {
+                    conn.send({ type: 'damage', val: currentWeapon.damage });
+                    flashStatus("HIT", "#ff0000");
+                } else {
+                    flashStatus("HIT", "#ff0000");
+                }
+            }
+        }
+
+        function reload() {
+            if(!currentWeapon || isReloading || currentWeapon.ammo === currentWeapon.maxAmmo) return;
+            isReloading = true; flashStatus("RELOADING", "#ff0000");
+            setTimeout(() => { currentWeapon.ammo = currentWeapon.maxAmmo; isReloading = false; updateUI(); flashStatus("READY", "#ff0000"); }, currentWeapon.reloadTime);
+        }
+
+        function toggleZoom(val) {
+            if(!currentWeapon) return;
+            isZooming = val;
+            camera.fov = val ? 75 * currentWeapon.zoom : 75;
+            camera.updateProjectionMatrix();
+            if(primaryType === 'AWP') { document.getElementById('sniper-scope').style.display = val ? 'block' : 'none'; gunMesh.visible = !val; }
+        }
+
+        function updateUI() {
+            if(!currentWeapon) return;
+            document.getElementById('hp-text').innerText = myHP;
+            document.getElementById('ammo-cur').innerText = currentWeapon.ammo;
+            document.getElementById('ammo-max-ui').innerText = currentWeapon.maxAmmo;
+            document.getElementById('my-score-ui').innerText = myScore;
+            document.getElementById('enemy-score-ui').innerText = enemyScore;
+            document.getElementById('weapon-name-ui').innerText = currentWeapon.name;
+        }
+
+        function flashStatus(t, c) {
+            const s = document.getElementById('status-msg');
+            s.innerText = t; s.style.color = c;
+            if(t !== "RELOADING") setTimeout(() => { s.innerText = "READY"; s.style.color = "#ff0000"; }, 800);
+        }
+
+        function endGame(win) {
+            isGameOver = true; 
+            if (document.pointerLockElement) document.exitPointerLock();
+            
+            const o = document.getElementById('game-over');
+            o.style.display = 'flex'; 
+            
+            const r = document.getElementById('game-result-text');
+            r.innerText = win ? "YOU WIN" : "YOU LOSE"; 
+            r.style.color = win ? "#4ade80" : "#f87171";
+            
+            let timeLeft = 5;
+            const timerText = document.getElementById('auto-exit-timer');
+            timerText.innerText = timeLeft;
+            
+            const countdownInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    location.reload();
+                } else {
+                    timerText.innerText = timeLeft;
+                }
+            }, 1000);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(isGameOver || !scene) return;
+            const dt = clock.getDelta();
+            
+            if (lookEuler.x > targetRecoilX) {
+                lookEuler.x = THREE.MathUtils.lerp(lookEuler.x, targetRecoilX, 5 * dt);
+            }
+            
+            camera.quaternion.setFromEuler(lookEuler);
+
+            if(!isFrozen) {
+                velocity.y -= GRAVITY * dt;
+
+                if (camera.position.y <= 1.7) {
+                    velocity.y = Math.max(0, velocity.y);
+                    camera.position.y = 1.7;
+                    canJump = true;
+                } else {
+                    canJump = false;
+                }
+
+                if (moveState.jump && canJump) {
+                    velocity.y = JUMP_FORCE;
+                    canJump = false;
+                }
+
+                const inputDir = new THREE.Vector3();
+                if(moveState.f) inputDir.z -= 1; if(moveState.b) inputDir.z += 1;
+                if(moveState.l) inputDir.x -= 1; if(moveState.r) inputDir.x += 1;
+                
+                if (inputDir.length() > 0) {
+                    inputDir.normalize().applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, lookEuler.y, 0)));
+                }
+
+                const speed = 10;
+                if (canJump) {
+                    velocity.x = inputDir.x * speed;
+                    velocity.z = inputDir.z * speed;
+                } else {
+                    const airAccel = 15;
+                    velocity.x += inputDir.x * airAccel * dt;
+                    velocity.z += inputDir.z * airAccel * dt;
+                    
+                    const horizVelocity = new THREE.Vector2(velocity.x, velocity.z);
+                    if (horizVelocity.length() > speed * 1.5) {
+                        horizVelocity.setLength(speed * 1.5);
+                        velocity.x = horizVelocity.x;
+                        velocity.z = horizVelocity.y;
+                    }
+                }
+
+                camera.position.addScaledVector(velocity, dt);
+            }
+
+            gunMesh.position.z = THREE.MathUtils.lerp(gunMesh.position.z, -0.4, 0.1);
+            
+            if(!isSolo && conn && conn.open) {
+                conn.send({ 
+                    type: 'sync', 
+                    p: { x: camera.position.x, y: camera.position.y - 0.85, z: camera.position.z }, 
+                    r: lookEuler.y 
+                });
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        window.onresize = () => { 
+            if(camera) { 
+                camera.aspect = window.innerWidth/window.innerHeight; 
+                camera.updateProjectionMatrix(); 
+                renderer.setSize(window.innerWidth, window.innerHeight); 
+            } 
+        };
+    </script>
+</body>
+</html>
