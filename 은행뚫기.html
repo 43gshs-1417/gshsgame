@@ -1,0 +1,854 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+// --- [퍼즐 데이터베이스 구성] ---
+const gameData = {
+  tutorial: {
+    title: "TUTORIAL: 시스템 접속",
+    missions: [
+      {
+        id: 't1', type: 'input',
+        title: "기본 연결",
+        desc: "SYNAPSE 시스템에 접속 중입니다. 연결 코드를 입력하십시오. [접속 코드: 0000]",
+        answer: '0000',
+        hints: ["텍스트에 정답이 적혀있습니다.", "코드 '0000'을 입력하세요.", "입력창에 0000 입력 후 ENTER"]
+      },
+      {
+        id: 't2', type: 'wire',
+        title: "도선 연결 (기본)",
+        desc: "데이터 흐름을 복구해야 합니다. 좌측의 [MAIN] 노드와 우측의 [SUB] 노드를 순서대로 클릭하여 연결하세요.",
+        nodesA: [ {id:'MAIN', val:'IN'} ],
+        nodesB: [ {id:'SUB', val:'OUT'} ],
+        answerPairs: [['MAIN', 'SUB']],
+        hints: ["버튼을 클릭하여 연결을 활성화합니다.", "먼저 MAIN을 누르고, 그 다음 SUB를 누르세요.", "왼쪽 누르고 오른쪽 누르기"]
+      },
+      {
+        id: 't3', type: 'log',
+        title: "로그 스캔",
+        desc: "보안 로그에서 관리자 계정을 찾으십시오.",
+        logs: ["USER: guest connected", "USER: admin access denied", "USER: root connected successfully", "SYSTEM: port 8080 open"],
+        answerIndex: 2,
+        hints: ["성공적으로 연결된 계정을 찾으세요.", "root 계정에 집중하세요.", "세 번째 줄이 정답입니다."]
+      },
+      {
+        id: 't4', type: 'cipher',
+        title: "기초 암호 해독",
+        desc: "간단한 카이사르 암호(알파벳 1칸 밀기)가 적용되어 있습니다. 원문을 알아내어 입력하십시오.\n암호문: I F M M P",
+        answer: 'HELLO',
+        hints: ["알파벳을 하나씩 앞으로 당겨보세요.", "I 전은 H, F 전은 E...", "정답은 대문자로 HELLO 입니다."]
+      }
+    ]
+  },
+  stage1: {
+    title: "STAGE 1: 은행 외부 침투",
+    missions: [
+      {
+        id: '1_1', type: 'grid',
+        title: "CCTV 맹점 파악",
+        desc: "카메라 회전 주기를 분석했습니다. 16개의 구역 중 완전히 감시를 벗어난 사각지대 하나를 찾아 클릭하십시오. (힌트: 열은 홀수, 행은 짝수 교차점 중 가장 끝)",
+        gridSize: 4,
+        answerIndex: 11,
+        hints: ["4x4 그리드입니다.", "3번째 행, 4번째 열에 위치해 있습니다.", "위에서 3번째 줄, 가장 오른쪽 칸입니다."]
+      },
+      {
+        id: '1_2', type: 'timing',
+        title: "경보 센서 우회",
+        desc: "적외선 센서의 주파수가 일치할 때 [차단] 버튼을 눌러야 합니다.",
+        targetRange: [40, 60],
+        speed: 3,
+        hints: ["바가 중간에 올 때까지 기다리세요.", "가운데 [ ] 표시된 영역에 들어왔을 때 누르세요.", "초록색 영역 중앙에서 타이밍을 맞추세요."]
+      },
+      {
+        id: '1_3', type: 'memory',
+        title: "출입 카드 패턴 복제",
+        desc: "보안 요원의 카드 키 패턴을 가로챘습니다. 점멸하는 순서를 기억하고 똑같이 입력하십시오.",
+        sequenceLength: 4,
+        hints: ["패턴을 잘 지켜보세요.", "메모장을 활용해 순서를 적어두는 것도 방법입니다.", "틀리면 처음부터 다시 해야 합니다."]
+      },
+      {
+        id: '1_4', type: 'input',
+        title: "보안문 코드 추론",
+        desc: "직원이 남긴 메모: '비밀번호는 오늘 연도에서 은행 설립 연도(1985)를 뺀 값에 10을 곱한 것이다.' (현재 연도: 2026)",
+        answer: '410',
+        hints: ["수학 문제입니다.", "(2026 - 1985) * 10", "41 * 10 = ?"]
+      }
+    ]
+  },
+  stage2: {
+    title: "STAGE 2: 내부 이동",
+    missions: [
+      {
+        id: '2_1', type: 'input',
+        title: "루팅 경로 분석",
+        desc: "서버 구조도: A -> B(2) -> C(5) -> D(?). 이전 노드의 값에 2를 곱하고 1을 더합니다. D에 들어갈 값은?",
+        answer: '11',
+        hints: ["규칙을 적용해보세요.", "C의 값은 5입니다. 5 * 2 + 1", "정답은 11입니다."]
+      },
+      {
+        id: '2_2', type: 'log_input',
+        title: "가짜 정보 필터링",
+        desc: "보안 시스템이 가짜 로그를 뿌리고 있습니다. 정상적인 시스템 작동 로그(INFO)의 '포트 번호'만 추출하여 하단에 입력하십시오.",
+        logs: [
+          "[ERROR] Port 21: Connection Timeout",
+          "[WARN] Port 22: Unknown IP",
+          "[INFO] Port 80: HTTP Traffic normal",
+          "[ERROR] Port 443: Certificate Invalid",
+          "[WARN] Port 3306: DB Sync fail"
+        ],
+        answer: '80',
+        hints: ["ERROR나 WARN이 아닌 것을 찾으세요.", "INFO 상태인 로그를 보세요.", "정상적인 포트 번호는 80입니다."]
+      },
+      {
+        id: '2_3', type: 'visual',
+        title: "숨겨진 통로 검색",
+        desc: "적외선 스캔 이미지 결과입니다. 유일하게 온도가 다른 패널의 번호를 찾으십시오.\n\n[01] [02] [03] [04]\n[05] [06] [07] [08]\n[09] [10] [07] [12]\n[13] [14] [15] [16]",
+        answer: '11',
+        hints: ["숫자들의 패턴을 보세요.", "순서대로 배열되지 않은 숫자가 하나 있습니다.", "3번째 줄에 중복된 숫자가 있습니다. 원래 있어야 할 번호를 입력하세요."]
+      },
+      {
+        id: '2_4', type: 'multi_wire',
+        title: "보안 키패드 배선",
+        desc: "합선된 선을 다시 연결해야 합니다. 합이 '10'이 되는 노드끼리 3쌍을 연결하십시오.",
+        nodesA: [ {id:'A1', val:2}, {id:'A2', val:7}, {id:'A3', val:4} ],
+        nodesB: [ {id:'B1', val:6}, {id:'B2', val:3}, {id:'B3', val:8} ],
+        answerPairs: [['A1','B3'], ['A2','B2'], ['A3','B1']],
+        hints: ["더해서 10이 되는 숫자를 찾으세요.", "2는 8과 연결합니다.", "2-8, 7-3, 4-6 으로 짝지으세요."]
+      }
+    ]
+  },
+  stage3: {
+    title: "STAGE 3: 관리자 시스템 해킹",
+    missions: [
+      {
+        id: '3_1', type: 'upload',
+        title: "백도어 업로드",
+        desc: "[UPLOAD] 버튼을 누른 후, 백신 프로그램이 스캔을 시작하기 직전(80%~95% 구간)에 [INTERCEPT]를 눌러야 합니다.",
+        targetRange: [80, 95],
+        hints: ["게이지가 차오르는 것을 기다리세요.", "80%가 넘으면 붉게 변하기 전 타이밍에 누르세요.", "거의 끝에 다다랐을 때 INTERCEPT!"]
+      },
+      {
+        id: '3_2', type: 'multi_file',
+        title: "파일 조각 조합",
+        desc: "세 개의 숨겨진 파일 내용을 조합하여 마스터 키워드를 만드십시오.\nFile1: 'SYS'\nFile2: 'TEM'\nFile3: '_OVR'",
+        answer: 'SYSTEM_OVR',
+        hints: ["주어진 텍스트를 순서대로 합치세요.", "대문자와 언더바(_)를 정확히 입력하세요.", "정답: SYSTEM_OVR"]
+      },
+      {
+        id: '3_3', type: 'cipher_advanced',
+        title: "고급 암호 해독",
+        desc: "키보드 배열 패턴입니다. QWERTY 자판에서 각 글자의 '바로 오른쪽' 글자를 입력하십시오. (오른쪽 끝인 경우 맨 왼쪽으로 돌아감)\n암호문: S F B",
+        answer: 'DGN',
+        hints: ["실제 키보드를 쳐다보세요.", "S 오른쪽은 D입니다.", "정답은 D G N (띄어쓰기 없이 DGN)"]
+      },
+      {
+        id: '3_4', type: 'logic_button',
+        title: "권한 획득 프로세스",
+        desc: "다음 조건에 맞게 3개의 스위치를 조작하십시오.\n1. A는 C와 반대 상태여야 한다.\n2. B는 ON 상태여야 한다.\n3. 만약 A가 ON이면 시스템은 리셋된다.",
+        switches: ['A', 'B', 'C'],
+        answer: [false, true, true],
+        hints: ["조건 3에 의해 A는 반드시 OFF여야 합니다.", "조건 2에 의해 B는 ON입니다.", "조건 1에 의해 C는 ON이어야 합니다. (OFF, ON, ON)"]
+      }
+    ]
+  },
+  stage4: {
+    title: "STAGE 4: 금고 정보 추적",
+    missions: [
+      {
+        id: '4_1', type: 'text_extract',
+        title: "이메일 덤프 분석",
+        desc: "수신된 이메일들 속에서 금고 관리자의 핀 번호를 찾아 입력하십시오.\n\n[MSG 1]: 점심 메뉴는 피자로 하죠.\n[MSG 2]: Manager - 이번 주 금고 변경 핀은 내 생일 월/일 뒤집은 거다 (생일: 08/12)\n[MSG 3]: 서버 점검 내일 오후 2시.",
+        answer: '2180',
+        hints: ["두 번째 메시지가 중요합니다.", "생일 0812를 어떻게 뒤집을까요?", "0812를 문자열로 생각하고 완전히 거꾸로 쓰세요: 2180"]
+      },
+      {
+        id: '4_2', type: 'timing_fast',
+        title: "방화벽 회피",
+        desc: "고속 방화벽입니다. 신호가 매우 빠르게 움직입니다. 정확히 중앙[50%]에 도달했을 때 [BYPASS] 하십시오. (허용 오차 5%)",
+        targetRange: [45, 55],
+        speed: 8,
+        hints: ["매우 빠릅니다. 미리 누를 준비를 하세요.", "눈으로 보고 누르면 늦습니다. 리듬을 타세요.", "바가 중간에 오기 살짝 직전에 클릭!"]
+      },
+      {
+        id: '4_3', type: 'complex_logic',
+        title: "이중 보안 해제",
+        desc: "다음 숫자들의 다음 규칙을 찾아 5번째 숫자자를 입력하시오.\n3, 6, 12, 24, [ ? ]",
+        answer: '48',
+        hints: ["숫자가 어떻게 증가하는지 보세요.", "이전 숫자에 2를 곱하고 있습니다.", "24 * 2 = 48"]
+      },
+      {
+        id: '4_4', type: 'memory_hard',
+        title: "생체 인식 우회 (고급 패턴)",
+        desc: "망막 스캐너의 인증 패턴입니다. 6개의 패턴을 정확히 기억하고 재현하십시오.",
+        sequenceLength: 6,
+        hints: ["난이도가 높습니다. 손가락으로 화면을 짚어보세요.", "집중하세요!", "실패하면 패턴이 바뀝니다."]
+      }
+    ]
+  },
+  stage5: {
+    title: "STAGE 5: 금고 해킹 & 탈출",
+    missions: [
+      {
+        id: '5_1', type: 'multi_input',
+        title: "다중 잠금 해제",
+        desc: "3개의 잠금장치를 동시에 풀어야 합니다.\nL1: 10진수 15를 2진수로 (4자리)\nL2: 'HACK'의 글자 수 제곱\nL3: 100 이하 소수 중 가장 큰 수",
+        inputs: 3,
+        answers: ['1111', '16', '97'],
+        hints: ["L1: 8+4+2+1=15. L2: 4*4. L3: 100부터 역순으로 소수를 찾으세요.", "L2는 16입니다.", "답은 순서대로 1111, 16, 97 입니다."]
+      },
+      {
+        id: '5_2', type: 'terminal_sim',
+        title: "시스템 셧다운 억제",
+        desc: "시스템이 셧다운을 시도합니다. 취소 명령어를 입력해야 합니다. 단서는 로그에 있습니다. \n[SYSTEM HALT INITIATED... OVERRIDE COMMAND: 'ABORT_SEQ_99']",
+        answer: 'ABORT_SEQ_99',
+        hints: ["화면에 표시된 OVERRIDE COMMAND를 그대로 치세요.", "대문자와 언더바를 정확히 입력하세요.", "정답: ABORT_SEQ_99"]
+      },
+      {
+        id: '5_3', type: 'final_boss',
+        title: "최종 마스터 키",
+        desc: "지금까지 모은 정보의 결합입니다.\n1스테이지 설립연도 마지막 2자리 (19'85')\n+ 2스테이지 정상 포트 번호 ('80')\n+ 4스테이지 관리자 핀 앞 2자리 ('21')\n이 숫자들을 차례대로 이어서 하나로 입력하시오.",
+        answer: '858021',
+        hints: ["정보를 조합하세요. 85, 80, 21", "띄어쓰기 없이 하나로 붙여야 합니다.", "정답: 858021"]
+      }
+    ]
+  }
+};
+
+const stageKeys = Object.keys(gameData);
+
+// --- [OS 창 컨테이너 컴포넌트] ---
+const OSWindow = ({ title, children, className, actionIcon }) => (
+  // min-h-0을 적용하여 자식 요소가 부모의 크기를 찢고 나가는 것을 원천 차단
+  <div className={`flex flex-col border border-green-800 bg-black/80 backdrop-blur-md shadow-[0_0_10px_rgba(0,255,0,0.1)] min-h-0 overflow-hidden ${className}`}>
+    <div className="flex items-center justify-between px-3 py-1.5 border-b border-green-800 bg-green-950/40 select-none shrink-0">
+      <span className="text-xs font-bold tracking-widest text-green-400 flex items-center gap-2">
+        {actionIcon && <span>{actionIcon}</span>}
+        {title}
+      </span>
+      <div className="flex gap-1.5">
+        <div className="w-2.5 h-2.5 rounded-full border border-green-700 hover:bg-green-700 cursor-pointer transition-colors"></div>
+        <div className="w-2.5 h-2.5 rounded-full border border-yellow-700 hover:bg-yellow-700 cursor-pointer transition-colors"></div>
+        <div className="w-2.5 h-2.5 rounded-full border border-red-700 hover:bg-red-700 cursor-pointer transition-colors"></div>
+      </div>
+    </div>
+    <div className="flex-grow relative min-h-0">
+      {children}
+    </div>
+  </div>
+);
+
+// --- [퍼즐 컴포넌트들] ---
+
+const InputPuzzle = ({ mission, onSolve, onFail }) => {
+  const [val, setVal] = useState('');
+  const check = (e) => {
+    e.preventDefault();
+    if(val.replace(/\s/g,'').toUpperCase() === mission.answer.replace(/\s/g,'').toUpperCase()) onSolve();
+    else { onFail(); setVal(''); }
+  };
+  return (
+    <form onSubmit={check} className="flex flex-col gap-4 h-full justify-center p-5">
+      <div className="whitespace-pre-wrap leading-relaxed text-sm font-bold">{mission.desc}</div>
+      <div className="flex gap-3">
+        <input autoFocus type="text" value={val} onChange={e=>setVal(e.target.value)} 
+               className="flex-grow bg-black/50 border-2 border-green-600 text-green-400 p-3 font-mono text-lg outline-none focus:border-cyan-400 focus:shadow-[0_0_10px_rgba(0,255,255,0.4)] transition-all uppercase"
+               placeholder="> ENTER DATA HERE" />
+        <button type="submit" className="px-6 border-2 border-green-600 hover:bg-green-900 hover:border-green-400 font-bold tracking-widest text-sm transition-all">EXECUTE</button>
+      </div>
+    </form>
+  )
+}
+
+const MultiInputPuzzle = ({ mission, onSolve, onFail }) => {
+  const [vals, setVals] = useState(Array(mission.inputs).fill(''));
+  const check = (e) => {
+    e.preventDefault();
+    let isCorrect = true;
+    vals.forEach((v, i) => { if(v.trim().toUpperCase() !== mission.answers[i].toUpperCase()) isCorrect = false; });
+    if(isCorrect) onSolve(); else onFail();
+  };
+  return (
+    <form onSubmit={check} className="flex flex-col gap-4 h-full justify-center p-5">
+      <div className="whitespace-pre-wrap leading-relaxed text-sm font-bold">{mission.desc}</div>
+      <div className="flex flex-col gap-3">
+        {vals.map((v, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <span className="text-lg font-bold">L{i+1}:</span>
+            <input type="text" value={v} onChange={e=>{const newVals=[...vals]; newVals[i]=e.target.value; setVals(newVals);}} 
+                   className="flex-grow bg-black/50 border border-green-600 text-green-400 p-2 font-mono text-sm outline-none focus:border-cyan-400"
+                   placeholder={`KEY ${i+1}`} />
+          </div>
+        ))}
+      </div>
+      <button type="submit" className="py-3 border-2 border-green-600 hover:bg-green-900 text-sm font-bold tracking-widest mt-3 transition-all">DECRYPT ALL</button>
+    </form>
+  )
+}
+
+const LogPuzzle = ({ mission, onSolve, onFail }) => (
+  <div className="flex flex-col gap-3 h-full p-5">
+    <div className="whitespace-pre-wrap text-sm font-bold">{mission.desc}</div>
+    <div className="bg-gray-950 p-3 border border-green-800 flex flex-col gap-1.5 flex-grow overflow-y-auto custom-scrollbar font-mono text-xs min-h-0">
+      {mission.logs.map((log, idx) => (
+        <div key={idx} onClick={() => { if(idx === mission.answerIndex) onSolve(); else onFail(); }}
+             className="cursor-pointer hover:bg-green-900 hover:text-white p-2 border border-transparent hover:border-green-500 transition-all">
+          {log}
+        </div>
+      ))}
+    </div>
+  </div>
+)
+
+const LogInputPuzzle = ({ mission, onSolve, onFail }) => {
+  const [val, setVal] = useState('');
+  const check = (e) => {
+    e.preventDefault();
+    if(val.trim().toUpperCase() === mission.answer.toUpperCase()) onSolve();
+    else { onFail(); setVal(''); }
+  };
+  return (
+    <div className="flex flex-col gap-3 h-full p-5 min-h-0">
+      <div className="whitespace-pre-wrap text-sm font-bold shrink-0">{mission.desc}</div>
+      <div className="bg-black p-3 border border-green-800 flex flex-col gap-1.5 flex-grow overflow-y-auto custom-scrollbar font-mono text-xs opacity-80 min-h-0">
+        {mission.logs.map((log, idx) => (
+          <div key={idx} className={`${log.includes('ERROR') ? 'text-red-500' : log.includes('WARN') ? 'text-yellow-500' : 'text-cyan-400'}`}>
+            {log}
+          </div>
+        ))}
+      </div>
+      <form onSubmit={check} className="flex gap-3 shrink-0 mt-2">
+        <input autoFocus type="text" value={val} onChange={e=>setVal(e.target.value)} 
+               className="flex-grow bg-gray-950 border-2 border-green-600 text-green-400 p-2 font-mono text-sm outline-none focus:border-cyan-400"
+               placeholder="> EXTRACTED PORT" />
+        <button type="submit" className="px-6 border-2 border-green-600 hover:bg-green-900 font-bold tracking-widest text-sm transition-all">VERIFY</button>
+      </form>
+    </div>
+  )
+}
+
+const TimingPuzzle = ({ mission, onSolve, onFail }) => {
+  const [progress, setProgress] = useState(0);
+  const [isActive, setIsActive] = useState(false);
+  
+  const reqRef = useRef();
+  const progressRef = useRef(0);
+  const dirRef = useRef(1);
+
+  // 미션이 바뀔 때 게이지 초기화
+  useEffect(() => {
+    setIsActive(false);
+    progressRef.current = 0;
+    dirRef.current = 1;
+    setProgress(0);
+    cancelAnimationFrame(reqRef.current);
+  }, [mission.id]);
+
+  const animate = useCallback(() => {
+    // speed가 정의되어 있지 않으면 기본값 3 사용 (NaN 오류 방지)
+    const speed = mission.speed || 3;
+    progressRef.current += (speed * dirRef.current);
+    
+    if (progressRef.current >= 100) { 
+      progressRef.current = 100; 
+      dirRef.current = -1; 
+    } else if (progressRef.current <= 0) { 
+      progressRef.current = 0; 
+      dirRef.current = 1; 
+    }
+    
+    setProgress(progressRef.current);
+    reqRef.current = requestAnimationFrame(animate);
+  }, [mission.speed]);
+
+  useEffect(() => {
+    if (isActive) {
+      reqRef.current = requestAnimationFrame(animate);
+    }
+    return () => cancelAnimationFrame(reqRef.current);
+  }, [animate, isActive]);
+
+  const attempt = () => {
+    setIsActive(false); // 판정 시 잠시 정지
+    cancelAnimationFrame(reqRef.current);
+    
+    const finalProgress = progressRef.current;
+    if(finalProgress >= mission.targetRange[0] && finalProgress <= mission.targetRange[1]) {
+      onSolve();
+    } else {
+      onFail();
+      // 실패 시 0.5초 뒤 게이지 초기화
+      setTimeout(() => {
+        progressRef.current = 0;
+        dirRef.current = 1;
+        setProgress(0);
+      }, 500);
+    }
+  };
+
+  // 미션에 따라 버튼 텍스트 동적 렌더링
+  const startLabel = mission.id === '3_1' ? '[ UPLOAD ]' : '[ INITIATE SEQUENCE ]';
+  const actionLabel = mission.id === '3_1' ? '[ INTERCEPT ]' :
+                      mission.id === '1_2' ? '[ 차 단 ]' : '[ BYPASS ]';
+
+  return (
+    <div className="flex flex-col gap-6 h-full justify-center p-5">
+      <div className="whitespace-pre-wrap text-sm font-bold text-center">{mission.desc}</div>
+      <div className="relative w-full h-8 bg-gray-900 border-2 border-green-700 rounded overflow-hidden shadow-inner">
+        <div className="absolute top-0 bottom-0 bg-red-900/40 border-x-2 border-red-500 transition-all"
+             style={{ left: `${mission.targetRange[0]}%`, width: `${mission.targetRange[1] - mission.targetRange[0]}%` }} />
+        <div className="absolute top-0 bottom-0 w-2 bg-cyan-300 shadow-[0_0_10px_rgba(0,255,255,1)]"
+             style={{ left: `${progress || 0}%` }} />
+      </div>
+      <div className="flex gap-4">
+        {!isActive ? (
+          <button onClick={() => setIsActive(true)} className="flex-grow border-2 border-green-600 text-green-500 hover:bg-green-900 hover:text-white py-4 text-lg font-bold tracking-widest uppercase transition-colors">
+            {startLabel}
+          </button>
+        ) : (
+          <button onClick={attempt} className="flex-grow border-2 border-red-600 text-red-500 hover:bg-red-900 hover:text-white py-4 text-lg font-bold tracking-widest uppercase transition-colors">
+            {actionLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const GridPuzzle = ({ mission, onSolve, onFail }) => {
+  const size = mission.gridSize;
+  const cells = Array.from({length: size * size}, (_, i) => i);
+  return (
+    <div className="flex flex-col gap-4 items-center h-full justify-center p-5">
+      <div className="whitespace-pre-wrap text-sm font-bold w-full text-center">{mission.desc}</div>
+      <div className="grid gap-1 p-2 border border-green-800 bg-gray-950 shadow-[0_0_15px_rgba(0,255,0,0.1)]"
+           style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
+        {cells.map(idx => (
+          <div key={idx} onClick={() => idx === mission.answerIndex ? onSolve() : onFail()}
+               className="w-12 h-12 sm:w-16 sm:h-16 bg-green-900/10 border border-green-800/50 hover:bg-cyan-900 hover:border-cyan-400 cursor-crosshair flex items-center justify-center text-xs text-green-900/50 transition-colors font-bold">
+            SEC-{idx < 9 ? `0${idx+1}` : idx+1}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const MemoryPuzzle = ({ mission, onSolve, onFail }) => {
+  const [sequence, setSequence] = useState([]);
+  const [playerStep, setPlayerStep] = useState(0);
+  const [flashing, setFlashing] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [message, setMessage] = useState("AWAITING INITIALIZATION...");
+
+  const generateSequence = useCallback(() => {
+    const seq = Array.from({length: mission.sequenceLength}, () => Math.floor(Math.random() * 9));
+    setSequence(seq);
+    return seq;
+  }, [mission.sequenceLength]);
+
+  const playSequence = useCallback(async (seq) => {
+    setIsPlaying(true); setMessage("OBSERVING PATTERN..."); setPlayerStep(0);
+    await new Promise(r => setTimeout(r, 1000));
+    for(let i=0; i<seq.length; i++) {
+      setFlashing(seq[i]); await new Promise(r => setTimeout(r, 500));
+      setFlashing(null); await new Promise(r => setTimeout(r, 200));
+    }
+    setIsPlaying(false); setMessage("INPUT REQUIRED");
+  }, []);
+
+  useEffect(() => { playSequence(generateSequence()); }, [generateSequence, playSequence]);
+
+  const handleCellClick = (idx) => {
+    if(isPlaying) return;
+    setFlashing(idx); setTimeout(() => setFlashing(null), 200);
+    if(idx === sequence[playerStep]) {
+      if(playerStep + 1 === sequence.length) {
+        setMessage("AUTHENTICATION SUCCESS"); setTimeout(onSolve, 500);
+      } else setPlayerStep(playerStep + 1);
+    } else {
+      setMessage("AUTH FAILED. REBOOTING SEQUENCE..."); onFail();
+      setTimeout(() => playSequence(generateSequence()), 1000);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4 items-center h-full justify-center p-5">
+      <div className="whitespace-pre-wrap text-sm font-bold w-full text-center">{mission.desc}</div>
+      <div className="text-cyan-400 text-xl font-bold animate-pulse mt-2">{message}</div>
+      <div className="grid grid-cols-3 gap-2 p-3 border border-green-800 bg-black mt-2">
+        {Array.from({length: 9}).map((_, idx) => (
+          <div key={idx} onClick={() => handleCellClick(idx)}
+               className={`w-14 h-14 sm:w-16 sm:h-16 border-2 transition-all cursor-pointer shadow-inner
+                 ${flashing === idx ? 'bg-cyan-500 border-white shadow-[0_0_15px_rgba(0,255,255,0.8)]' : 'bg-gray-900 border-green-800 hover:border-green-400'}`} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const MultiWirePuzzle = ({ mission, onSolve, onFail }) => {
+  const [selected, setSelected] = useState(null); // { side: 'A' | 'B', id: string }
+  const [connections, setConnections] = useState([]);
+
+  const handleNodeClick = (side, id) => {
+    // 이미 연결된 노드인지 확인
+    if (side === 'A' && connections.some(c => c.a === id)) return;
+    if (side === 'B' && connections.some(c => c.b === id)) return;
+
+    // 아무것도 선택되지 않았을 때
+    if (!selected) {
+      setSelected({ side, id });
+      return;
+    }
+
+    // 같은 방향을 클릭했을 때 (선택 변경)
+    if (selected.side === side) {
+      setSelected({ side, id });
+      return;
+    }
+
+    // 다른 방향을 클릭했을 때 (연결 성사)
+    const aId = side === 'A' ? id : selected.id;
+    const bId = side === 'B' ? id : selected.id;
+
+    const updatedConns = [...connections, { a: aId, b: bId }];
+    setConnections(updatedConns);
+    setSelected(null);
+
+    const targetLength = mission?.answerPairs?.length || 0;
+    if (updatedConns.length === targetLength) {
+      let isCorrect = true;
+      updatedConns.forEach(conn => {
+        if (!mission?.answerPairs?.find(pair => pair[0] === conn.a && pair[1] === conn.b)) {
+          isCorrect = false;
+        }
+      });
+      
+      if (isCorrect) setTimeout(onSolve, 500);
+      else setTimeout(() => { onFail(); setConnections([]); }, 500);
+    }
+  };
+
+  const nodesA = mission?.nodesA || [];
+  const nodesB = mission?.nodesB || [];
+
+  return (
+    <div className="flex flex-col gap-4 h-full justify-center p-5">
+      <div className="whitespace-pre-wrap text-sm font-bold text-center">{mission?.desc}</div>
+      <div className="flex justify-between items-center px-6 h-48 border-y border-green-800/50 bg-black/30 relative">
+        
+        <div className="flex flex-col gap-4 z-10">
+          {nodesA.map(n => {
+            const isConn = connections.some(c => c.a === n.id);
+            const isSel = selected?.side === 'A' && selected?.id === n.id;
+            return (
+              <button key={n.id} onClick={() => handleNodeClick('A', n.id)}
+                      className={`px-4 py-3 w-24 border-2 font-bold text-sm transition-all shadow-md ${isSel ? 'bg-cyan-900 border-cyan-400 text-white' : isConn ? 'bg-green-950 border-green-900 text-green-800' : 'border-green-600 hover:bg-green-800 bg-black'}`}>
+                [{n.val}]
+              </button>
+            );
+          })}
+        </div>
+        
+        <div className="flex flex-col gap-2 items-center justify-center text-xs font-mono text-cyan-500 absolute inset-0 pointer-events-none">
+          {connections.map((c, i) => <div key={i} className="bg-black/80 px-3 py-1.5 border border-cyan-800">LINK: {c.a} &lt;=====&gt; {c.b}</div>)}
+          {connections.length === 0 && <div className="text-gray-600 text-sm">AWAITING CONNECTIONS...</div>}
+        </div>
+
+        <div className="flex flex-col gap-4 z-10">
+          {nodesB.map(n => {
+            const isConn = connections.some(c => c.b === n.id);
+            const isSel = selected?.side === 'B' && selected?.id === n.id;
+            return (
+              <button key={n.id} onClick={() => handleNodeClick('B', n.id)}
+                      className={`px-4 py-3 w-24 border-2 font-bold text-sm transition-all shadow-md ${isSel ? 'bg-cyan-900 border-cyan-400 text-white' : isConn ? 'bg-green-950 border-green-900 text-green-800' : 'border-green-600 hover:bg-green-800 bg-black'}`}>
+                [{n.val}]
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <button onClick={() => { setConnections([]); setSelected(null); }} className="self-center text-red-500 hover:text-white hover:bg-red-900 px-6 py-2 border border-red-800 mt-3 transition-colors font-bold text-sm">FLUSH CIRCUITS</button>
+    </div>
+  )
+}
+
+const LogicButtonPuzzle = ({ mission, onSolve, onFail }) => {
+  const [state, setState] = useState(Array(mission.switches.length).fill(false));
+  const toggle = (idx) => { const n = [...state]; n[idx] = !n[idx]; setState(n); };
+  const submit = () => {
+    let correct = true;
+    for(let i=0; i<state.length; i++) { if(state[i] !== mission.answer[i]) correct = false; }
+    if(correct) onSolve(); else { onFail(); setState(Array(mission.switches.length).fill(false)); }
+  }
+
+  return (
+    <div className="flex flex-col gap-6 h-full justify-center p-5 items-center">
+      <div className="whitespace-pre-wrap text-sm font-bold w-full text-center leading-relaxed bg-black/50 p-3 border border-green-900">{mission.desc}</div>
+      <div className="flex gap-6 mt-3">
+        {mission.switches.map((sw, idx) => (
+          <button key={idx} onClick={() => toggle(idx)}
+                  className={`w-16 h-20 text-2xl font-bold border-2 flex flex-col items-center justify-center transition-all shadow-lg
+                    ${state[idx] ? 'bg-cyan-700 border-cyan-400 text-white shadow-[0_0_15px_rgba(0,255,255,0.6)]' : 'bg-gray-900 border-gray-600 text-gray-500'}`}>
+            {sw}<span className="text-xs mt-2">{state[idx]? 'ON':'OFF'}</span>
+          </button>
+        ))}
+      </div>
+      <button onClick={submit} className="mt-5 border-2 border-green-500 px-6 py-3 hover:bg-green-900 text-sm font-bold tracking-widest transition-colors">APPLY CONFIGURATION</button>
+    </div>
+  )
+}
+
+
+// --- [메인 앱 컴포넌트] ---
+export default function App() {
+  const [gameState, setGameState] = useState('START');
+  const [currentStageIndex, setCurrentStageIndex] = useState(0);
+  const [currentMissionIndex, setCurrentMissionIndex] = useState(0);
+  
+  const [hintLevel, setHintLevel] = useState(0);
+  const [shake, setShake] = useState(false);
+  const [flash, setFlash] = useState('');
+  const [terminalLogs, setTerminalLogs] = useState(["SYSTEM BOOT...", "ESTABLISHING SECURE CONNECTION...", "WAITING FOR USER INPUT..."]);
+  const terminalEndRef = useRef(null);
+
+  const [sysCpu, setSysCpu] = useState(12);
+  const [sysRam, setSysRam] = useState(45);
+  const [currentTime, setCurrentTime] = useState("");
+
+  const stageKey = stageKeys[currentStageIndex];
+  const stageData = gameData[stageKey];
+  const mission = stageData?.missions[currentMissionIndex];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('en-US', { hour12: false }));
+      setSysCpu(Math.floor(Math.random() * 30) + 10);
+      setSysRam(Math.floor(Math.random() * 20) + 40);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const addLog = useCallback((msg) => {
+    setTerminalLogs(prev => [...prev, `[${new Date().toLocaleTimeString('en-US',{hour12:false})}] > ${msg}`]);
+  }, []);
+
+  useEffect(() => {
+    terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [terminalLogs]);
+
+  const triggerError = useCallback(() => {
+    setShake(true); setFlash('error');
+    addLog("WARNING: INVALID INPUT DETECTED. SECURITY TRACE INCREASED.");
+    setTimeout(() => { setShake(false); setFlash(''); }, 500);
+  }, [addLog]);
+
+  const triggerSuccess = useCallback(() => {
+    setFlash('success');
+    addLog(`SUCCESS: SECURITY LAYER BYPASSED.`);
+    setTimeout(() => { setFlash(''); }, 500);
+  }, [addLog]);
+
+  const handleSolve = () => {
+    triggerSuccess(); setHintLevel(0);
+    setTimeout(() => {
+      if (currentMissionIndex + 1 < stageData.missions.length) {
+        setCurrentMissionIndex(prev => prev + 1);
+      } else {
+        if (currentStageIndex + 1 < stageKeys.length) {
+          setCurrentStageIndex(prev => prev + 1);
+          setCurrentMissionIndex(0);
+          addLog(`SYSTEM ACCESS ELEVATED: ${gameData[stageKeys[currentStageIndex+1]].title}`);
+        } else {
+          setGameState('VICTORY');
+        }
+      }
+    }, 1000);
+  };
+
+  const showHint = () => {
+    if (hintLevel < 3) {
+      setHintLevel(prev => prev + 1);
+      addLog(`REQUESTING HINT DATA... PART ${hintLevel+1}/3 UNLOCKED.`);
+    } else {
+      addLog("ERROR: NO FURTHER HINTS AVAILABLE.");
+    }
+  };
+
+  const renderPuzzle = () => {
+    if(!mission) return null;
+    const props = { mission, onSolve: handleSolve, onFail: triggerError };
+    
+    switch(mission.type) {
+      case 'input': 
+      case 'cipher': 
+      case 'text_extract': 
+      case 'terminal_sim': 
+      case 'final_boss': 
+      case 'complex_logic': 
+      case 'visual':         
+      case 'multi_file':     
+      case 'cipher_advanced':
+        return <InputPuzzle {...props} />;
+      case 'multi_input': return <MultiInputPuzzle {...props} />;
+      case 'log': return <LogPuzzle {...props} />;
+      case 'log_input': return <LogInputPuzzle {...props} />; 
+      case 'timing': case 'timing_fast': case 'upload': return <TimingPuzzle {...props} />;
+      case 'grid': return <GridPuzzle {...props} />;
+      case 'memory': case 'memory_hard': return <MemoryPuzzle {...props} />;
+      case 'wire': case 'multi_wire': return <MultiWirePuzzle {...props} />;
+      case 'logic_button': return <LogicButtonPuzzle {...props} />;
+      default: return <div className="text-red-500">ERROR: MODULE NOT FOUND</div>;
+    }
+  };
+
+  if (gameState === 'START') {
+    return (
+      <div className="w-full h-screen bg-[#020202] text-green-500 font-mono flex items-center justify-center select-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#0a1a0f] to-[#000000]">
+        <div className="text-center p-8 border border-green-800/50 bg-black/80 shadow-[0_0_40px_rgba(0,255,0,0.15)] backdrop-blur-sm">
+          <h1 className="text-6xl font-black mb-2 tracking-widest text-transparent bg-clip-text bg-gradient-to-b from-green-300 to-green-700 drop-shadow-[0_0_10px_rgba(0,255,0,0.8)]">SYNAPSE</h1>
+          <h2 className="text-xl mb-8 tracking-[0.5em] text-green-800 font-bold border-b border-green-900 pb-3">BANK HEIST</h2>
+          <button onClick={() => { setGameState('PLAYING'); addLog("INITIATING HEIST SEQUENCE..."); }}
+                  className="px-8 py-3 border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-black transition-all text-xl font-bold tracking-widest shadow-[0_0_10px_rgba(0,255,0,0.4)]">
+            [ INITIATE CONNECTION ]
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'VICTORY') {
+    return (
+      <div className="w-full h-screen bg-black text-cyan-400 font-mono flex flex-col items-center justify-center select-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-950 to-black">
+        <h1 className="text-[5rem] font-black mb-5 tracking-widest drop-shadow-[0_0_25px_rgba(0,255,255,0.8)]">ACCESS GRANTED</h1>
+        <div className="text-xl mb-2 text-white animate-pulse">MAIN VAULT UNLOCKED. OVERRIDING SECURITY...</div>
+        <div className="text-sm text-cyan-800 mb-10">FUNDS TRANSFERRING... 100% COMPLETE.</div>
+        <button onClick={() => window.location.reload()}
+                className="px-8 py-3 border-2 border-cyan-500 hover:bg-cyan-900 text-xl transition-all shadow-[0_0_15px_rgba(0,255,255,0.4)] font-bold">
+          [ DISCONNECT SYSTEM ]
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`w-full h-screen bg-[#050508] text-green-500 font-mono overflow-hidden flex flex-col
+      ${shake ? 'animate-[shake_0.4s_ease-in-out]' : ''}
+      transition-colors duration-100 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPgo8cmVjdCB3aWR0aD0iNCIgaGVpZ2h0PSI0IiBmaWxsPSIjMDUwNTA4IiAvPgo8cmVjdCB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBmaWxsPSIjMGYwZjBmMTAiIC8+Cjwvc3ZnPg==')]`}>
+      
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes shake {
+          0%, 100% { transform: translate(0, 0); }
+          10%, 30%, 50%, 70%, 90% { transform: translate(-5px, 2px); }
+          20%, 40%, 60%, 80% { transform: translate(5px, -2px); }
+        }
+        .scanline {
+          width: 100%; height: 100%; z-index: 50; position: fixed; top:0; left:0; pointer-events: none;
+          background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+          background-size: 100% 4px; opacity: 0.15;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #000; border-left: 1px solid #053000; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #0f3; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #0f8; }
+      `}} />
+      <div className="scanline" />
+      {flash === 'error' && <div className="absolute inset-0 bg-red-900/40 z-40 pointer-events-none mix-blend-color-burn" />}
+      {flash === 'success' && <div className="absolute inset-0 bg-cyan-900/30 z-40 pointer-events-none mix-blend-screen" />}
+
+      {/* 모니터 꽉 채우기 (패딩 및 max-w 제거) */}
+      <div className="flex-grow flex w-full h-full p-0 overflow-hidden box-border min-h-0">
+        <div className="relative flex flex-col w-full h-full min-h-0">
+          
+          <div className="flex-grow grid grid-cols-12 grid-rows-6 gap-1 sm:gap-2 p-1 sm:p-2 min-h-0">
+            
+            <OSWindow title={`SYNAPSE_DECRYPTOR // ${stageData?.title || 'SYSTEM'}`} className="col-span-12 lg:col-span-8 row-span-4 lg:row-span-6" actionIcon="🔐">
+              <div className="absolute inset-0 flex flex-col">
+                <div className="absolute top-2 right-3 text-xs text-green-700 text-right z-10 pointer-events-none">
+                  <p>MODULE: {mission?.type?.toUpperCase() || 'STANDBY'}</p>
+                  <p>PROGRESS: {currentMissionIndex + 1}/{stageData?.missions?.length || 0}</p>
+                </div>
+                <div className="flex-grow overflow-y-auto custom-scrollbar pt-8 min-h-0">
+                  {renderPuzzle()}
+                </div>
+              </div>
+            </OSWindow>
+
+            <OSWindow title="SYSTEM_MONITOR" className="col-span-12 lg:col-span-4 row-span-2 hidden lg:block" actionIcon="⚙️">
+              <div className="absolute inset-0 p-3 flex flex-col gap-2 text-xs justify-center">
+                <div className="flex justify-between items-center text-sm">
+                  <span>CPU USAGE:</span>
+                  <span className="text-cyan-400 font-bold">{sysCpu}%</span>
+                </div>
+                <div className="w-full h-2 border border-green-800 bg-black">
+                  <div className="h-full bg-cyan-600 transition-all duration-1000" style={{width: `${sysCpu}%`}}></div>
+                </div>
+                
+                <div className="flex justify-between items-center mt-2 text-sm">
+                  <span>RAM ALLOC:</span>
+                  <span className="text-cyan-400 font-bold">{sysRam}%</span>
+                </div>
+                <div className="w-full h-2 border border-green-800 bg-black">
+                  <div className="h-full bg-cyan-600 transition-all duration-1000" style={{width: `${sysRam}%`}}></div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-green-900 text-xs text-green-700 flex justify-between">
+                  <span>NETWORK UPLINK:</span>
+                  <span className="text-green-500 animate-pulse font-bold text-xs">SECURE [ENCRYPTED]</span>
+                </div>
+              </div>
+            </OSWindow>
+
+            <OSWindow title="TERMINAL_LOG" className="col-span-12 lg:col-span-4 row-span-2 lg:row-span-4" actionIcon=">_">
+              <div className="absolute inset-0 flex flex-col">
+                <div className="flex-grow p-3 overflow-y-auto text-xs leading-relaxed flex flex-col custom-scrollbar min-h-0">
+                  {terminalLogs.map((log, i) => (
+                    <div key={i} className={`mb-1 ${log.includes('WARNING') || log.includes('ERROR') || log.includes('FAILED') ? 'text-red-500' : log.includes('SUCCESS') ? 'text-cyan-400 font-bold text-sm' : 'text-green-600'}`}>
+                      {log}
+                    </div>
+                  ))}
+                  <div ref={terminalEndRef} className="h-1 w-1 bg-green-500 animate-pulse mt-1 shrink-0"></div>
+                </div>
+                
+                <div className="border-t border-green-900/50 p-2 bg-green-950/20 flex flex-col gap-1.5 shrink-0">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-green-700 font-bold">HINT INTEGRITY: {3 - hintLevel}/3</span>
+                    <button onClick={showHint} disabled={hintLevel >= 3}
+                            className="text-xs border border-yellow-700 text-yellow-600 px-2 py-1 hover:bg-yellow-900 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-bold">
+                      [ OVERRIDE HINT ]
+                    </button>
+                  </div>
+                  {hintLevel > 0 && (
+                    <div className="bg-yellow-950/40 border border-yellow-800 p-2 text-xs text-yellow-500 overflow-y-auto max-h-20 custom-scrollbar">
+                      <ul className="list-disc pl-4 space-y-1">
+                        {mission?.hints?.slice(0, hintLevel).map((h, i) => <li key={i}>{h}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </OSWindow>
+
+          </div>
+
+          <div className="h-8 border-t border-green-800 bg-black/90 backdrop-blur-md flex items-center justify-between px-3 z-20 shrink-0">
+            <div className="flex items-center gap-3">
+              <button className="bg-green-900 text-black font-bold px-3 py-1 hover:bg-green-500 transition-colors tracking-widest text-xs">SYNAPSE_OS</button>
+              <div className="h-4 w-px bg-green-800"></div>
+              <div className="text-xs text-green-700 hidden sm:flex gap-3 font-bold">
+                <span className="bg-green-900/20 px-2 py-0.5 border border-green-800 text-green-400">DECRYPTOR.exe</span>
+                <span className="px-2 py-0.5">SYS_MONITOR</span>
+                <span className="px-2 py-0.5">TERMINAL</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs font-bold text-green-600">
+              <span className="hidden sm:inline-block text-xs">IPv4: 192.168.0.***</span>
+              <div className="px-2 py-1 border border-green-800 bg-green-950/30 text-xs">
+                {currentTime}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
