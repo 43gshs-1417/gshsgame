@@ -104,7 +104,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
 
-        // 현실적인 동물 이미지 URL (이모티콘 대체)
+        // 현실적인 동물 이미지 URL
         const ANIMAL_IMAGES = [
             'https://images.unsplash.com/photo-1590523278191-995cbcda646b?w=200&h=200&fit=crop', // 늑대
             'https://images.unsplash.com/photo-1534567153574-2b12153a87f0?w=200&h=200&fit=crop', // 독수리
@@ -116,7 +116,7 @@
             'https://images.unsplash.com/photo-1531251445707-1f000e1e87d0?w=200&h=200&fit=crop'  // 뱀
         ];
 
-        // 게임 단어 데이터 (주제별 [시민단어, 라이어단어])
+        // 게임 단어 데이터
         const GAME_WORDS = {
             '게임': [['스타크래프트', '리그오브레전드'], ['마인크래프트', '로블록스'], ['배틀그라운드', '오버워치']],
             '음식': [['짜장면', '짬뽕'], ['피자', '치킨'], ['삼겹살', '소고기']],
@@ -124,11 +124,9 @@
             '사람': [['의사', '간호사'], ['경찰', '소방관'], ['선생님', '교수님']]
         };
 
-        // 랜덤 5자리 방 코드 생성
         const generateRoomCode = () => Math.random().toString(36).substring(2, 7).toUpperCase();
 
         function App() {
-            // 로컬 상태
             const [myId, setMyId] = useState('');
             const [nickname, setNickname] = useState('');
             const [roomCodeInput, setRoomCodeInput] = useState('');
@@ -138,27 +136,25 @@
             const [inputText, setInputText] = useState('');
             const [myWordInfo, setMyWordInfo] = useState({ word: '', isLiar: false, topic: '' });
 
-            // P2P 연결 관리
             const connectionsRef = useRef({});
             const hostConnectionRef = useRef(null);
 
-            // 게임 공유 상태 (방장이 관리하고 브로드캐스트)
             const [gameState, setGameState] = useState({
-                phase: 'login', // login -> lobby -> playing -> voting -> suspense -> guess -> result
+                phase: 'login',
                 mode: 'basic',
-                players: [], // { id, name, avatar }
+                players: [],
                 topic: '',
                 turnIndex: 0,
-                logs: [], // { name, text }
-                votes: {}, // { voterId: targetId }
+                logs: [],
+                votes: {},
                 timeLeft: 0,
                 suspenseTargetId: null,
                 resultMessage: '',
                 liarId: null,
-                citizenWord: '' // 라이어가 맞춰야 할 단어
+                citizenWord: ''
             });
 
-            // Tab 키 이벤트 처리 (로그 보기)
+            // Tab 키 이벤트
             useEffect(() => {
                 const handleKeyDown = (e) => {
                     if (e.key === 'Tab') {
@@ -180,13 +176,11 @@
                 };
             }, []);
 
-            // 방장: 상태 브로드캐스트
             const broadcastState = (newState, privateData = {}) => {
                 setGameState(newState);
                 Object.values(connectionsRef.current).forEach(conn => {
                     if (conn.open) {
                         const payload = { type: 'STATE_UPDATE', state: newState };
-                        // 개인 정보(단어, 라이어 여부)는 해당 클라이언트에게만 전송
                         if (privateData[conn.peer]) {
                             payload.private = privateData[conn.peer];
                         }
@@ -195,7 +189,6 @@
                 });
             };
 
-            // 방장: 클라이언트 액션 처리
             const handleClientAction = (action, clientId) => {
                 setGameState(prev => {
                     const newState = { ...prev };
@@ -205,7 +198,6 @@
                         newState.logs.push({ name: player.name, text: action.text });
                         newState.turnIndex += 1;
                         
-                        // 모든 사람이 말했으면 투표로 넘어감
                         if (newState.turnIndex >= newState.players.length) {
                             newState.phase = 'voting';
                             newState.timeLeft = 60;
@@ -213,7 +205,8 @@
                         }
                     } else if (action.type === 'VOTE') {
                         newState.votes[clientId] = action.targetId;
-                        // 모두 투표했으면 즉시 결과 처리
+                        
+                        // 참가자 전원이 투표해야 개표되도록 다시 변경 (모두 투표 가능)
                         if (Object.keys(newState.votes).length === newState.players.length) {
                             clearInterval(window.voteTimer);
                             processVotingResult(newState);
@@ -251,7 +244,6 @@
             };
 
             const processVotingResult = (state) => {
-                // 가장 표를 많이 받은 사람 찾기
                 const counts = {};
                 Object.values(state.votes).forEach(target => {
                     counts[target] = (counts[target] || 0) + 1;
@@ -266,7 +258,7 @@
                     }
                 }
 
-                if (!targetId) targetId = state.players[0].id; // 투표 아무도 안한 경우 랜덤(첫번째)
+                if (!targetId) targetId = state.players[0].id;
 
                 state.phase = 'suspense';
                 state.suspenseTargetId = targetId;
@@ -274,13 +266,12 @@
                 state.resultMessage = `"${targetPlayer.name}"님은...`;
                 broadcastState(state);
 
-                // 3초 후 결과 발표
                 setTimeout(() => {
                     setGameState(prev => {
                         const next = { ...prev };
                         if (targetId === next.liarId) {
                             next.resultMessage = "라이어입니다!";
-                            next.phase = 'guess'; // 라이어 맞추기 단계
+                            next.phase = 'guess'; 
                         } else {
                             next.resultMessage = "라이어가 아닙니다!\n[라이어 승리]";
                             next.phase = 'result';
@@ -300,10 +291,9 @@
                 state.suspenseTargetId = null;
                 state.liarId = null;
                 state.citizenWord = '';
-                broadcastState(state, {}); // private data 초기화
+                broadcastState(state, {});
             };
 
-            // 방 만들기
             const createRoom = () => {
                 if (!nickname) return alert("닉네임을 입력하세요.");
                 const code = generateRoomCode();
@@ -348,7 +338,6 @@
                 });
             };
 
-            // 방 참여하기
             const joinRoom = () => {
                 if (!nickname || !roomCodeInput) return alert("닉네임과 방 코드를 입력하세요.");
                 const newPeer = new Peer();
@@ -375,7 +364,6 @@
                 });
             };
 
-            // 클라이언트: 액션 전송
             const sendAction = (action) => {
                 if (isHost) {
                     handleClientAction(action, myId);
@@ -384,7 +372,6 @@
                 }
             };
 
-            // 방장: 게임 시작
             const startGame = () => {
                 if (gameState.players.length < 2) return alert("최소 2명이 필요합니다.");
 
@@ -393,7 +380,6 @@
                 const wordPairs = GAME_WORDS[randomTopic];
                 const pair = wordPairs[Math.floor(Math.random() * wordPairs.length)];
                 
-                // 랜덤하게 단어 배정 (0번이 시민단어, 1번이 라이어단어)
                 const isFirstCitizen = Math.random() > 0.5;
                 const citizenWord = isFirstCitizen ? pair[0] : pair[1];
                 const liarWord = isFirstCitizen ? pair[1] : pair[0];
@@ -410,7 +396,6 @@
                         topic: randomTopic
                     };
                     
-                    // 방장 본인의 정보 세팅
                     if (p.id === myId) setMyWordInfo(privateData[p.id]);
                 });
 
@@ -447,7 +432,6 @@
                 }
             };
 
-            // 랜더링: 로그인/메인 화면
             if (gameState.phase === 'login') {
                 return (
                     <div className="fixed inset-0 spotlight-bg font-serif flex flex-col items-center justify-center text-white">
@@ -488,14 +472,12 @@
                 );
             }
 
-            // 랜더링: 게임 UI (방, 플레이, 투표, 결과)
             const activePlayer = gameState.players[gameState.turnIndex];
             const isMyTurn = activePlayer && activePlayer.id === myId;
             const totalPlayers = gameState.players.length;
 
             return (
                 <div className="fixed inset-0 spotlight-bg font-serif text-white">
-                    {/* 상단 정보 */}
                     <div className="absolute top-4 left-4 text-gray-400 text-sm flex flex-col gap-1 z-10">
                         <div className="text-blood font-bold tracking-widest">ROOM: {myId === gameState.players[0].id ? myId : (roomCodeInput || '연결됨')}</div>
                         <div>플레이어: {nickname}</div>
@@ -517,7 +499,6 @@
                         )}
                     </div>
 
-                    {/* 대기방 중앙 패널 */}
                     {gameState.phase === 'lobby' && (
                         <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
                             <div className="glass-panel p-8 w-[500px] text-center pointer-events-auto">
@@ -558,11 +539,9 @@
                         </div>
                     )}
 
-                    {/* 원탁 플레이어 배치 (원형 배치 수학적 계산) */}
                     <div className="absolute inset-0 flex items-center justify-center">
                         <div className="relative w-[600px] h-[600px]">
                             {gameState.players.map((p, index) => {
-                                // 0도를 맨 아래(본인쪽)로 하기 위한 각도 계산
                                 const angle = (index / totalPlayers) * Math.PI * 2 + Math.PI / 2;
                                 const radius = 250;
                                 const x = Math.cos(angle) * radius;
@@ -587,9 +566,9 @@
                                             {p.name}
                                         </div>
                                         
-                                        {/* 투표 현황 표시 (투표 단계 종료 후) */}
+                                        {/* 투표 현황 표시: 프로필(이름) 아래로 위치 변경 */}
                                         {gameState.phase === 'voting' && Object.values(gameState.votes).includes(p.id) && (
-                                            <div className="absolute -top-6 text-blood font-bold">
+                                            <div className="text-blood font-bold mt-1 bg-black bg-opacity-80 border border-blood px-3 py-1 rounded-sm text-sm">
                                                 {Object.values(gameState.votes).filter(id => id === p.id).length} 표
                                             </div>
                                         )}
@@ -599,7 +578,6 @@
                         </div>
                     </div>
 
-                    {/* 플레이 단계 중앙 입력 UI */}
                     {gameState.phase === 'playing' && (
                         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 text-center">
                             {isMyTurn ? (
@@ -623,7 +601,6 @@
                         </div>
                     )}
 
-                    {/* 투표 단계 UI */}
                     {gameState.phase === 'voting' && (
                         <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2 text-center z-20 w-full">
                             <h2 className="text-4xl text-blood neon-red font-bold mb-4 tracking-widest">투표 시간</h2>
@@ -632,7 +609,6 @@
                         </div>
                     )}
 
-                    {/* 결과/서스펜스 오버레이 */}
                     {(gameState.phase === 'suspense' || gameState.phase === 'result') && (
                         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 transition-opacity duration-1000">
                             <div className="text-center">
@@ -643,7 +619,6 @@
                         </div>
                     )}
 
-                    {/* 라이어 정답 맞추기 단계 */}
                     {gameState.phase === 'guess' && (
                         <div className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50">
                             {myId === gameState.liarId ? (
@@ -656,33 +631,37 @@
                                         className="w-full bg-transparent border-b-2 border-white p-3 text-center text-white text-2xl"
                                         value={inputText}
                                         onChange={e => setInputText(e.target.value)}
-                                        onKeyDown={handleLiarGuess}
+                                        onKeyDown={handleLiarGuess} 
                                         placeholder="정답 입력 후 Enter"
                                     />
                                 </div>
                             ) : (
-                                <div className="text-3xl text-gray-500 tracking-widest">
+                                <div className="text-2xl text-gray-400 animate-pulse text-glow">
                                     라이어가 정답을 추론 중입니다...
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* TAB 로그 오버레이 */}
-                    <div className={`fixed inset-0 flex items-center justify-center z-40 log-overlay ${showLogs ? 'show' : ''}`}>
-                        <div className="glass-panel w-3/4 h-3/4 max-w-3xl p-8 flex flex-col">
-                            <h2 className="text-2xl text-blood border-b border-gray-800 pb-4 mb-4 font-bold tracking-widest">기록 (LOG)</h2>
-                            <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-4">
-                                {gameState.logs.length === 0 && <div className="text-gray-600 text-center mt-10">아직 기록이 없습니다.</div>}
-                                {gameState.logs.map((log, i) => (
-                                    <div key={i} className="flex flex-col border-l-2 border-gray-700 pl-4 py-1">
-                                        <span className="text-xs text-gray-500 mb-1">{log.name}</span>
-                                        <span className="text-lg text-gray-200">{log.text}</span>
-                                    </div>
-                                ))}
+                    {/* 기록 확인 모달 (Tab 키) */}
+                    <div className={`fixed inset-0 flex justify-center items-center z-40 log-overlay ${showLogs ? 'show' : ''}`}>
+                        <div className="glass-panel w-full max-w-2xl max-h-[80vh] flex flex-col p-6 m-4">
+                            <h2 className="text-2xl text-blood neon-red mb-4 border-b border-gray-700 pb-2">설명 기록</h2>
+                            <div className="overflow-y-auto flex-1 pr-2 flex flex-col gap-3">
+                                {gameState.logs.length === 0 ? (
+                                    <div className="text-gray-500 text-center py-10">아직 아무도 설명하지 않았습니다.</div>
+                                ) : (
+                                    gameState.logs.map((log, i) => (
+                                        <div key={i} className="bg-black bg-opacity-50 p-3 border border-gray-800 flex flex-col">
+                                            <span className="text-xs text-blood mb-1">{log.name}</span>
+                                            <span className="text-lg text-white">{log.text}</span>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
+
                 </div>
             );
         }
