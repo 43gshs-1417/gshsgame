@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사이버펑크 마피아</title>
+    
+    <!-- 라이브러리 로드: React, ReactDOM, Babel, Tailwind, PeerJS -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+
+    <style>
+        /* 모든 요소의 둥근 모서리 제거 (디자인 제약 준수) */
+        * {
+            border-radius: 0 !important;
+            font-family: 'Courier New', Courier, monospace;
+            box-sizing: border-box;
+        }
+
+        /* 루트 엘리먼트까지 높이 100% 고정 (무한 확장 방지) */
+        body, html, #root {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        /* 메인 화면: 보라색 사이버펑크 도시 배경 */
+        .bg-purple-city {
+            background: 
+                linear-gradient(to bottom, transparent 40%, rgba(139, 0, 255, 0.4) 100%),
+                repeating-linear-gradient(to right,
+                    transparent 0, transparent 20px,
+                    #110022 20px, #110022 60px,
+                    transparent 60px, transparent 70px,
+                    #0a0011 70px, #0a0011 120px
+                );
+            background-color: #05000a;
+            position: relative;
+        }
+
+        /* 게임 화면: 파란색 사이버펑크 도시 배경 */
+        .bg-blue-city {
+            background: 
+                linear-gradient(to bottom, transparent 40%, rgba(0, 150, 255, 0.4) 100%),
+                repeating-linear-gradient(to right,
+                    transparent 0, transparent 15px,
+                    #001133 15px, #001133 50px,
+                    transparent 50px, transparent 65px,
+                    #000a22 65px, #000a22 100px
+                );
+            background-color: #00050a;
+        }
+
+        /* 네온 텍스트 효과 */
+        .neon-text-purple {
+            color: #d4aaff;
+            text-shadow: 0 0 5px #d4aaff, 0 0 10px #8b00ff, 0 0 20px #8b00ff, 0 0 40px #8b00ff;
+        }
+        
+        .neon-text-blue {
+            color: #aaddff;
+            text-shadow: 0 0 5px #aaddff, 0 0 10px #0088ff, 0 0 20px #0088ff, 0 0 40px #0088ff;
+        }
+        
+        .neon-text-red {
+            color: #ffaaaa;
+            text-shadow: 0 0 5px #ffaaaa, 0 0 10px #ff0000, 0 0 20px #ff0000, 0 0 40px #ff0000;
+        }
+
+        /* 날카로운 테두리 요소들 */
+        .sharp-border-purple {
+            border: 2px solid #8b00ff;
+            box-shadow: 0 0 10px rgba(139, 0, 255, 0.5), inset 0 0 10px rgba(139, 0, 255, 0.5);
+            background: rgba(10, 0, 20, 0.8);
+            transition: all 0.2s;
+        }
+        .sharp-border-purple:hover:not(:disabled) {
+            box-shadow: 0 0 20px rgba(139, 0, 255, 0.8), inset 0 0 20px rgba(139, 0, 255, 0.8);
+            background: rgba(30, 0, 60, 0.9);
+        }
+
+        .sharp-border-blue {
+            border: 2px solid #0088ff;
+            box-shadow: 0 0 10px rgba(0, 136, 255, 0.5), inset 0 0 10px rgba(0, 136, 255, 0.5);
+            background: rgba(0, 10, 20, 0.8);
+        }
+        .sharp-border-blue-interactive:hover:not(:disabled) {
+            border-color: #00ffff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.8), inset 0 0 20px rgba(0, 255, 255, 0.8);
+            cursor: pointer;
+        }
+
+        /* 폰 형태의 채팅 UI */
+        .phone-chat-ui {
+            border: 4px solid #0055aa;
+            border-top: 20px solid #0055aa;
+            border-bottom: 20px solid #0055aa;
+            background: rgba(0, 5, 10, 0.9);
+            box-shadow: 0 0 30px rgba(0, 150, 255, 0.3);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* 내부 콘텐츠가 폰 UI 밖으로 나가는 것을 방지 */
+        }
+        .phone-chat-ui::before {
+            content: '';
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 4px;
+            background: #000;
+        }
+
+        /* 투표율 데이터 시각화 바 */
+        .vote-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #222;
+            margin-top: 5px;
+            position: relative;
+        }
+        .vote-bar-fill {
+            height: 100%;
+            background: #00ffff;
+            box-shadow: 0 0 5px #00ffff;
+            transition: width 0.3s ease-out;
+        }
+
+        /* 커스텀 스크롤바 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.5); }
+        ::-webkit-scrollbar-thumb { background: #0088ff; border-radius: 0; }
+        ::-webkit-scrollbar-thumb:hover { background: #00ffff; }
+
+        /* 캐릭터 아바타 (이모티콘 대체 기하학 도형) */
+        .avatar-svg {
+            width: 40px;
+            height: 40px;
+            display: inline-block;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #444;
+        }
+        
+        .dead-overlay {
+            position: absolute;
+            top:0; left:0; right:0; bottom:0;
+            background: rgba(255, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 2rem;
+            color: #ff0000;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- 기하학적 동물 아바타 생성기 (이모티콘 대체) ---
+        const AnimalAvatar = ({ seed }) => {
+            const index = typeof seed === 'number' ? seed : seed.charCodeAt(0) % 8;
+            const svgs = [
+                // 0: 늑대 (회색 다각형)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><polygon points="50,10 80,40 70,90 30,90 20,40" fill="#6b7280"/><polygon points="30,40 50,60 70,40 50,30" fill="#374151"/></svg>,
+                // 1: 여우 (주황색)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><polygon points="10,10 40,40 50,90 60,40 90,10" fill="#ea580c"/><polygon points="30,40 70,40 50,70" fill="#ffffff"/></svg>,
+                // 2: 곰 (갈색 직사각형 조합)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><rect x="20" y="20" width="60" height="60" fill="#78350f"/><rect x="35" y="60" width="30" height="20" fill="#451a03"/></svg>,
+                // 3: 고양이 (검정/노랑 다각형)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><polygon points="10,10 30,40 50,30 70,40 90,10 80,80 20,80" fill="#111827"/><polygon points="30,40 70,40 50,60" fill="#eab308"/></svg>,
+                // 4: 부엉이 (베이지/갈색)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><polygon points="20,20 80,20 90,80 10,80" fill="#854d0e"/><rect x="30" y="40" width="15" height="15" fill="#fefce8"/><rect x="55" y="40" width="15" height="15" fill="#fefce8"/></svg>,
+                // 5: 개 (탄/갈색)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><polygon points="10,40 30,20 70,20 90,40 70,90 30,90" fill="#a16207"/><polygon points="40,50 60,50 50,70" fill="#422006"/></svg>,
+                // 6: 독수리 (하양/노랑)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><polygon points="50,10 90,50 50,90 10,50" fill="#f3f4f6"/><polygon points="50,40 80,50 50,60" fill="#eab308"/></svg>,
+                // 7: 상어 (파랑)
+                <svg viewBox="0 0 100 100" className="w-full h-full"><polygon points="10,50 50,10 90,50 50,90" fill="#0284c7"/><polygon points="20,50 80,50 50,20" fill="#f8fafc"/></svg>
+            ];
+            return svgs[index];
+        };
+
+        // --- 메인 애플리케이션 ---
+        const App = () => {
+            // 앱 상태: MENU, HOSTING, JOINING, LOBBY, IN_GAME
+            const [appState, setAppState] = useState('MENU');
+            const [playerName, setPlayerName] = useState('');
+            const [roomCode, setRoomCode] = useState('');
+            
+            // 네트워크 상태
+            const [peer, setPeer] = useState(null);
+            const [myId, setMyId] = useState(null);
+            const [isHost, setIsHost] = useState(false);
+            const connections = useRef([]); // 호스트용 연결 배열
+            const hostConn = useRef(null);  // 클라이언트용 호스트 연결
+
+            // 게임 상태 (호스트가 진실의 원천)
+            const [gameState, setGameState] = useState({
+                players: [],
+                phase: 'LOBBY', // LOBBY, DAY1_CHAT, NIGHT_MAFIA, NIGHT_DOC, NIGHT_POLICE, DAY_CHAT, END
+                timer: 0,
+                chat: [],
+                votes: {},
+                nightActions: { mafia: null, doc: null, police: null },
+                winner: null,
+                systemMsg: ''
+            });
+
+            // 클라이언트용 개인 메시지 (경찰 조사 결과 등)
+            const [privateMsg, setPrivateMsg] = useState('');
+
+            // 하단 스크롤 참조
+            const chatEndRef = useRef(null);
+            useEffect(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, [gameState.chat, privateMsg]);
+
+            // --- 네트워크 초기화 (호스트) ---
+            const createRoom = () => {
+                if (!playerName) return alert('이름을 입력하세요.');
+                
+                // 5자리 랜덤 영숫자 방 코드 생성
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                let customRoomCode = '';
+                for (let i = 0; i < 5; i++) {
+                    customRoomCode += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+
+                // 생성된 5자리 코드를 Peer ID로 직접 사용합니다.
+                const newPeer = new Peer(customRoomCode);
+                
+                newPeer.on('open', (id) => {
+                    console.log('Host Peer ID created:', id);
+                    setMyId(id);
+                    setRoomCode(id);
+                    setIsHost(true);
+                    setAppState('LOBBY');
+                    setGameState(prev => ({
+                        ...prev,
+                        players: [{ id, name: playerName, alive: true, role: '대기중' }]
+                    }));
+                });
+
+                newPeer.on('connection', (conn) => {
+                    console.log('Host received connection from:', conn.peer);
+                    connections.current.push(conn);
+                    conn.on('data', (data) => handleClientData(conn.peer, data));
+                    // 클라이언트 접속 시 초기 상태를 브로드캐스트하여 동기화
+                    broadcastState(gameState); 
+                });
+                
+                newPeer.on('error', (err) => {
+                    console.error('PeerJS error (Host):', err);
+                    if (err.type === 'unavailable-id') {
+                        alert('이미 사용중인 방 코드입니다. 다시 방 만들기를 눌러주세요.');
+                    } else {
+                        alert('네트워크 오류가 발생했습니다: ' + err.type);
+                    }
+                });
+
+                setPeer(newPeer);
+            };
+
+            // --- 네트워크 초기화 (클라이언트) ---
+            const joinRoom = () => {
+                if (!playerName || !roomCode) return alert('이름과 방 코드를 입력하세요.');
+                if (roomCode.length !== 5) return alert('방 코드는 5자리입니다.');
+
+                const newPeer = new Peer();
+                
+                newPeer.on('open', (id) => {
+                    console.log('Client Peer ID created:', id);
+                    setMyId(id);
+                    
+                    // 호스트(방 코드)에 연결 시도
+                    const conn = newPeer.connect(roomCode, { reliable: true });
+                    
+                    conn.on('open', () => {
+                        console.log('Client connected to Host successfully.');
+                        hostConn.current = conn;
+                        // 호스트에게 내 정보 전송
+                        conn.send({ type: 'JOIN', payload: { id, name: playerName } });
+                        setAppState('LOBBY'); // 연결 성공 시 로비로 이동
+                    });
+                    
+                    conn.on('data', (data) => {
+                        if (data.type === 'STATE_UPDATE') {
+                            setGameState(data.payload);
+                            
+                            // [수정점] 상태가 LOBBY가 아니면 무조건 IN_GAME으로 변경 (이전 상태 클로저 문제 해결)
+                            setAppState(prev => {
+                                if (data.payload.phase !== 'LOBBY' && prev === 'LOBBY') {
+                                    return 'IN_GAME';
+                                }
+                                return prev;
+                            });
+
+                        } else if (data.type === 'PRIVATE_MSG') {
+                            setPrivateMsg(data.payload);
+                        }
+                    });
+
+                    conn.on('error', (err) => {
+                        console.error('Connection error:', err);
+                        alert('호스트 연결에 실패했습니다. 방 코드를 확인해주세요.');
+                    });
+                });
+                
+                newPeer.on('error', (err) => {
+                    console.error('PeerJS error (Client):', err);
+                    alert('네트워크 오류가 발생했습니다: ' + err.type);
+                });
+
+                setPeer(newPeer);
+            };
+
+            // --- 호스트: 클라이언트 데이터 처리 ---
+            const handleClientData = (clientId, data) => {
+                setGameState(prev => {
+                    let next = { ...prev };
+                    
+                    if (data.type === 'JOIN') {
+                        // 중복 방지
+                        if (!next.players.find(p => p.id === data.payload.id)) {
+                            next.players = [...next.players, { id: data.payload.id, name: data.payload.name, alive: true, role: '대기중' }];
+                        }
+                    } 
+                    else if (data.type === 'CHAT') {
+                        next.chat = [...next.chat, { sender: data.payload.name, msg: data.payload.msg, time: new Date().toLocaleTimeString() }];
+                    }
+                    else if (data.type === 'VOTE' && next.phase === 'DAY_CHAT') {
+                        next.votes = { ...next.votes, [clientId]: data.payload.targetId };
+                    }
+                    else if (data.type === 'NIGHT_ACTION') {
+                        const player = next.players.find(p => p.id === clientId);
+                        if (!player || !player.alive) return next;
+
+                        next.nightActions = { ...next.nightActions };
+
+                        if (player.role === '마피아' && next.phase === 'NIGHT_MAFIA') next.nightActions.mafia = data.payload.targetId;
+                        if (player.role === '의사' && next.phase === 'NIGHT_DOC') next.nightActions.doc = data.payload.targetId;
+                        if (player.role === '경찰' && next.phase === 'NIGHT_POLICE') {
+                            next.nightActions.police = data.payload.targetId;
+                            // 경찰에게만 즉시 결과 전송
+                            const target = next.players.find(p => p.id === data.payload.targetId);
+                            const resultMsg = `[시스템] 조사 결과: ${target.name}님은 마피아가 ${target.role === '마피아' ? '맞습니다!' : '아닙니다.'}`;
+                            const conn = connections.current.find(c => c.peer === clientId);
+                            if (conn) conn.send({ type: 'PRIVATE_MSG', payload: resultMsg });
+                            if (clientId === myId) setPrivateMsg(resultMsg); // 호스트 자신이 경찰일 경우
+                        }
+                    }
+                    
+                    broadcastState(next);
+                    return next;
+                });
+            };
+
+            // --- 호스트: 상태 브로드캐스트 ---
+            // 클라이언트에게 역할을 숨겨서 보냅니다 (마피아는 서로 확인 가능)
+            const broadcastState = (stateToBroadcast) => {
+                if (!isHost) return;
+                
+                connections.current.forEach(conn => {
+                    // 연결이 열려있는 상태인지 확인
+                    if (conn && conn.open) {
+                        const personalizedState = hideRoles(stateToBroadcast, conn.peer);
+                        conn.send({ type: 'STATE_UPDATE', payload: personalizedState });
+                    }
+                });
+            };
+
+            const hideRoles = (state, viewerId) => {
+                const viewer = state.players.find(p => p.id === viewerId);
+                const isViewerMafia = viewer && viewer.role === '마피아';
+                
+                return {
+                    ...state,
+                    players: state.players.map(p => {
+                        if (state.phase === 'LOBBY') return p;
+                        if (state.phase === 'END') return p; // 끝나면 모두 공개
+                        if (p.id === viewerId) return p; // 내 역할은 보임
+                        if (isViewerMafia && p.role === '마피아') return p; // 마피아끼리 보임
+                        return { ...p, role: '?' }; // 타인 및 사망자 직업 철저히 숨김
+                    })
+                };
+            };
+
+            // --- 호스트: 게임 시작 및 역할 배분 ---
+            const startGame = () => {
+                setGameState(prev => {
+                    let next = { ...prev };
+                    let pl = [...next.players];
+                    // Fisher-Yates Shuffle
+                    for (let i = pl.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [pl[i], pl[j]] = [pl[j], pl[i]];
+                    }
+
+                    // 역할 수 계산 공식 (요구사항)
+                    const n = pl.length;
+                    const mafiaCount = Math.max(1, Math.floor(n / 2) - 1);
+                    const docCount = mafiaCount === 1 ? 1 : Math.floor(mafiaCount / 2) + 1;
+                    const policeCount = Math.max(0, docCount - 1);
+
+                    let m = mafiaCount, d = docCount, p = policeCount;
+                    pl = pl.map(player => {
+                        let role = '시민';
+                        if (m > 0) { role = '마피아'; m--; }
+                        else if (d > 0) { role = '의사'; d--; }
+                        else if (p > 0) { role = '경찰'; p--; }
+                        return { ...player, role, alive: true };
+                    });
+
+                    next.players = pl;
+                    next.phase = 'DAY1_CHAT'; // 요구사항: "처음에 밤이 되고... 마피아를 정합니다... 모든 역할을 정하고 나서 아침이 되었다는 메시지와 함께 30초 토론"
+                    next.timer = 30;
+                    next.chat = [{ sender: 'SYSTEM', msg: '모든 역할이 정해졌습니다. 아침이 되었습니다. 30초간 토론하세요.', time: '' }];
+                    
+                    broadcastState(next);
+                    setAppState('IN_GAME');
+                    return next;
+                });
+            };
+
+            // --- 호스트: 메인 게임 루프 (타이머) ---
+            useEffect(() => {
+                if (!isHost || appState !== 'IN_GAME' || gameState.phase === 'END') return;
+
+                const tick = setInterval(() => {
+                    setGameState(prev => {
+                        let next = { ...prev };
+                        next.timer -= 1;
+
+                        if (next.timer <= 0) {
+                            next = handlePhaseTransition(next);
+                        }
+                        
+                        broadcastState(next);
+                        return next;
+                    });
+                }, 1000);
+
+                return () => clearInterval(tick);
+            }, [isHost, appState, gameState.phase]); // 의존성 배열 주의
+
+            const checkWin = (state) => {
+                const alive = state.players.filter(p => p.alive);
+                const mafias = alive.filter(p => p.role === '마피아').length;
+                const others = alive.length - mafias;
+
+                if (mafias === 0) {
+                    state.phase = 'END';
+                    state.winner = '시민';
+                    state.chat.push({ sender: 'SYSTEM', msg: '마피아가 모두 죽었습니다. 시민 승리!', time: '' });
+                    return true;
+                } else if (mafias >= others) {
+                    state.phase = 'END';
+                    state.winner = '마피아';
+                    state.chat.push({ sender: 'SYSTEM', msg: '마피아가 도시를 장악했습니다. 마피아 승리!', time: '' });
+                    return true;
+                }
+                return false;
+            };
+
+            const handlePhaseTransition = (state) => {
+                const s = { 
+                    ...state, 
+                    chat: [...state.chat],
+                    players: state.players.map(p => ({...p}))
+                };
+                
+                switch (s.phase) {
+                    case 'DAY1_CHAT':
+                        s.phase = 'NIGHT_MAFIA';
+                        s.timer = 15;
+                        s.chat.push({ sender: 'SYSTEM', msg: '밤이 되었습니다. 마피아는 일어나서 죽일 사람을 고르세요.', time: '' });
+                        break;
+                    case 'NIGHT_MAFIA':
+                        s.phase = 'NIGHT_DOC';
+                        s.timer = 15;
+                        s.chat.push({ sender: 'SYSTEM', msg: '의사는 일어나서 살릴 사람을 고르세요.', time: '' });
+                        break;
+                    case 'NIGHT_DOC':
+                        s.phase = 'NIGHT_POLICE';
+                        s.timer = 15;
+                        s.chat.push({ sender: 'SYSTEM', msg: '경찰은 조사할 사람을 고르세요.', time: '' });
+                        break;
+                    case 'NIGHT_POLICE':
+                        // 밤 결과 처리
+                        const target = s.nightActions.mafia;
+                        const healed = s.nightActions.doc;
+                        
+                        if (target) {
+                            if (target === healed) {
+                                s.chat.push({ sender: 'SYSTEM', msg: '아침이 밝았습니다. 의사의 신속한 치료 덕분에 마피아의 공격을 막아 아무도 죽지 않았습니다!', time: '' });
+                            } else {
+                                const deadIdx = s.players.findIndex(p => p.id === target);
+                                if (deadIdx > -1) {
+                                    s.players[deadIdx].alive = false;
+                                    s.chat.push({ sender: 'SYSTEM', msg: `아침이 밝았습니다. ${s.players[deadIdx].name}님이 밤새 마피아에게 살해당했습니다.`, time: '' });
+                                }
+                            }
+                        } else {
+                            s.chat.push({ sender: 'SYSTEM', msg: '아침이 밝았습니다. 아무도 죽지 않은 평화로운 밤이었습니다.', time: '' });
+                        }
+
+                        // 액션 리셋
+                        s.nightActions = { mafia: null, doc: null, police: null };
+                        s.votes = {};
+
+                        if (checkWin(s)) break;
+
+                        s.phase = 'DAY_CHAT';
+                        s.timer = 60;
+                        s.chat.push({ sender: 'SYSTEM', msg: '60초간 토론하고 처형할 사람을 투표하세요.', time: '' });
+                        break;
+                    case 'DAY_CHAT':
+                        // 투표 결과 처리
+                        const voteCounts = {};
+                        Object.values(s.votes).forEach(vid => {
+                            voteCounts[vid] = (voteCounts[vid] || 0) + 1;
+                        });
+                        
+                        let maxVotes = 0;
+                        let executedId = null;
+                        let isTie = false;
+
+                        for (const [vid, count] of Object.entries(voteCounts)) {
+                            if (count > maxVotes) {
+                                maxVotes = count;
+                                executedId = vid;
+                                isTie = false;
+                            } else if (count === maxVotes) {
+                                isTie = true;
+                            }
+                        }
+
+                        if (executedId && !isTie) {
+                            const deadIdx = s.players.findIndex(p => p.id === executedId);
+                            if (deadIdx > -1) {
+                                s.players[deadIdx].alive = false;
+                                s.chat.push({ sender: 'SYSTEM', msg: `투표 결과, ${s.players[deadIdx].name}님이 처형되었습니다.`, time: '' });
+                            }
+                        } else {
+                            s.chat.push({ sender: 'SYSTEM', msg: '투표가 동률이거나 없어 아무도 처형되지 않았습니다.', time: '' });
+                        }
+
+                        if (checkWin(s)) break;
+
+                        s.phase = 'NIGHT_MAFIA';
+                        s.timer = 15;
+                        s.chat.push({ sender: 'SYSTEM', msg: '밤이 되었습니다. 마피아는 일어나서 죽일 사람을 고르세요.', time: '' });
+                        break;
+                }
+                return s;
+            };
+
+            // --- 클라이언트 액션 함수 ---
+            const sendChat = (e) => {
+                e.preventDefault();
+                const input = e.target.elements.msg;
+                const msg = input.value.trim();
+                if (!msg) return;
+                
+                const me = gameState.players.find(p => p.id === myId);
+                if (!me || (!me.alive && gameState.phase !== 'END')) return alert('죽은 자는 말이 없습니다.');
+
+                const payload = { name: playerName, msg };
+                if (isHost) {
+                    handleClientData(myId, { type: 'CHAT', payload });
+                } else {
+                    if (hostConn.current && hostConn.current.open) {
+                        hostConn.current.send({ type: 'CHAT', payload });
+                    } else {
+                        console.error('Host connection is not open');
+                    }
+                }
+                input.value = '';
+            };
+
+            const sendAction = (targetId) => {
+                const me = gameState.players.find(p => p.id === myId);
+                if (!me || !me.alive) return;
+
+                if (gameState.phase === 'DAY_CHAT') {
+                    if (isHost) handleClientData(myId, { type: 'VOTE', payload: { targetId } });
+                    else hostConn.current.send({ type: 'VOTE', payload: { targetId } });
+                } else if (gameState.phase.startsWith('NIGHT')) {
+                    if (isHost) handleClientData(myId, { type: 'NIGHT_ACTION', payload: { targetId } });
+                    else hostConn.current.send({ type: 'NIGHT_ACTION', payload: { targetId } });
+                }
+            };
+
+            // --- UI 렌더링 헬퍼 ---
+            const renderProgressBar = (playerId, currentState) => {
+                if (currentState.phase !== 'DAY_CHAT') return null;
+                const totalAlive = currentState.players.filter(p => p.alive).length;
+                const votesForThisPlayer = Object.values(currentState.votes).filter(id => id === playerId).length;
+                const percentage = totalAlive === 0 ? 0 : (votesForThisPlayer / totalAlive) * 100;
+                
+                return (
+                    <div className="vote-bar-container border border-gray-600">
+                        <div className="vote-bar-fill" style={{ width: `${percentage}%` }}></div>
+                        <div className="absolute top-[-15px] right-0 text-xs text-cyan-400">{votesForThisPlayer}표</div>
+                    </div>
+                );
+            };
+
+            // --- 뷰 렌더링 ---
+            if (appState === 'MENU') {
+                return (
+                    <div className="w-full h-full bg-purple-city flex flex-col items-center justify-center p-4">
+                        <h1 className="text-6xl md:text-8xl font-black mb-12 neon-text-purple tracking-widest text-center">MAFIA</h1>
+                        <div className="sharp-border-purple p-8 w-full max-w-md flex flex-col gap-6">
+                            <div>
+                                <label className="block text-purple-300 text-sm mb-2">접속자 이름</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full bg-black border-2 border-purple-800 text-white p-3 outline-none focus:border-purple-400"
+                                    value={playerName}
+                                    onChange={e => setPlayerName(e.target.value)}
+                                    placeholder="익명"
+                                />
+                            </div>
+                            <div className="flex gap-4">
+                                <button onClick={createRoom} className="flex-1 sharp-border-purple p-3 text-purple-200 font-bold hover:text-white uppercase">방 만들기</button>
+                            </div>
+                            <div className="border-t border-purple-900 pt-6">
+                                <label className="block text-purple-300 text-sm mb-2">방 코드 (참여시)</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full bg-black border-2 border-purple-800 text-white p-3 outline-none focus:border-purple-400 font-bold tracking-widest uppercase"
+                                    value={roomCode}
+                                    onChange={e => setRoomCode(e.target.value.toUpperCase())}
+                                    placeholder="5자리 방 코드 입력"
+                                    maxLength={5}
+                                />
+                                <button onClick={joinRoom} className="w-full mt-4 sharp-border-purple p-3 text-purple-200 font-bold hover:text-white uppercase">방 참여</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (appState === 'LOBBY') {
+                return (
+                    <div className="w-full h-full bg-purple-city flex flex-col items-center justify-center p-4">
+                        <div className="sharp-border-purple p-8 w-full max-w-2xl flex flex-col gap-6">
+                            <h2 className="text-3xl font-bold neon-text-purple text-center">작전 대기실</h2>
+                            <div className="bg-black border border-purple-800 p-4 text-center">
+                                <p className="text-sm text-gray-400 mb-1">초대 코드</p>
+                                <p className="text-3xl font-black text-purple-300 select-all tracking-widest">{roomCode}</p>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {gameState.players.map(p => (
+                                    <div key={p.id} className="border border-purple-900 bg-black p-3 flex flex-col items-center">
+                                        <div className="avatar-svg mb-2"><AnimalAvatar seed={p.name} /></div>
+                                        <span className="text-sm truncate w-full text-center">{p.name}</span>
+                                        {p.id === myId && <span className="text-xs text-purple-500">(나)</span>}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {isHost ? (
+                                <button 
+                                    onClick={startGame} 
+                                    disabled={gameState.players.length < 3}
+                                    className="mt-4 sharp-border-purple p-4 text-xl font-bold text-white hover:bg-purple-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {gameState.players.length < 3 ? '최소 3명 필요' : '게임 시작'}
+                                </button>
+                            ) : (
+                                <div className="mt-4 text-center text-purple-400 p-4 border border-purple-800 animate-pulse">
+                                    호스트가 게임을 시작하기를 기다리는 중...
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // IN_GAME
+            // 호스트는 진실의 원천(모든 직업)을 가지므로 렌더링 시 필터링을 거칩니다.
+            const displayState = isHost ? hideRoles(gameState, myId) : gameState;
+            const me = displayState.players.find(p => p.id === myId);
+            const myRole = me ? me.role : '관전자';
+            
+            // 현재 페이즈에 따른 화면 시각적 테마
+            let phaseColor = 'border-blue-500';
+            let overlayColor = 'transparent';
+            if (displayState.phase === 'NIGHT_MAFIA') overlayColor = 'rgba(255, 0, 0, 0.1)';
+            if (displayState.phase === 'NIGHT_DOC') overlayColor = 'rgba(0, 255, 0, 0.1)';
+            if (displayState.phase === 'NIGHT_POLICE') overlayColor = 'rgba(0, 0, 255, 0.1)';
+
+            return (
+                <div className="w-full h-full bg-blue-city flex flex-col md:flex-row p-2 md:p-6 gap-6 relative overflow-hidden">
+                    {/* 야간 색상 오버레이 */}
+                    <div className="absolute inset-0 pointer-events-none" style={{ background: overlayColor, transition: 'background 1s' }}></div>
+
+                    {/* 좌측: 플레이어 목록 및 정보 [수정점] min-h-0 추가하여 flex 컨테이너에서 강제 확장 방지 */}
+                    <div className="flex-1 flex flex-col gap-4 z-10 overflow-y-auto min-h-0">
+                        <div className="sharp-border-blue p-4 flex justify-between items-center bg-opacity-90">
+                            <div>
+                                <h2 className="text-2xl font-bold neon-text-blue">{displayState.phase.replace('_', ' ')}</h2>
+                                <p className="text-gray-400 text-sm">남은 시간: <span className="text-cyan-400 font-bold text-lg">{displayState.timer}초</span></p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-sm text-gray-400">당신의 역할</p>
+                                <p className={`text-xl font-bold ${myRole === '마피아' ? 'text-red-500' : myRole === '의사' ? 'text-green-500' : myRole === '경찰' ? 'text-blue-500' : 'text-white'}`}>
+                                    [{myRole}]
+                                </p>
+                            </div>
+                        </div>
+
+                        {displayState.phase === 'END' && (
+                            <div className="sharp-border-purple p-6 text-center animate-bounce">
+                                <h1 className="text-4xl font-black neon-text-purple mb-4">{displayState.winner} 승리!</h1>
+                                <button onClick={() => window.location.reload()} className="px-6 py-2 bg-purple-900 border border-purple-500 hover:bg-purple-700">홈으로 돌아가기</button>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 flex-1 content-start">
+                            {displayState.players.map(p => {
+                                // 투표/액션 대상 선택 가능 여부
+                                let canInteract = false;
+                                if (me && me.alive && p.alive && displayState.phase !== 'END') {
+                                    if (displayState.phase === 'DAY_CHAT') canInteract = true;
+                                    if (displayState.phase === 'NIGHT_MAFIA' && myRole === '마피아') canInteract = true;
+                                    if (displayState.phase === 'NIGHT_DOC' && myRole === '의사') canInteract = true;
+                                    if (displayState.phase === 'NIGHT_POLICE' && myRole === '경찰') canInteract = true;
+                                }
+
+                                const isTargeted = 
+                                    (displayState.phase === 'DAY_CHAT' && displayState.votes[myId] === p.id) ||
+                                    (displayState.phase === 'NIGHT_MAFIA' && myRole === '마피아' && displayState.nightActions.mafia === p.id) ||
+                                    (displayState.phase === 'NIGHT_DOC' && myRole === '의사' && displayState.nightActions.doc === p.id) ||
+                                    (displayState.phase === 'NIGHT_POLICE' && myRole === '경찰' && displayState.nightActions.police === p.id);
+
+                                return (
+                                    <div 
+                                        key={p.id} 
+                                        onClick={() => canInteract ? sendAction(p.id) : null}
+                                        className={`relative p-4 flex flex-col items-center bg-black transition-all
+                                            ${canInteract ? 'sharp-border-blue sharp-border-blue-interactive' : 'border-2 border-gray-800'}
+                                            ${isTargeted ? 'bg-cyan-900 border-cyan-400 shadow-[0_0_15px_#00ffff]' : ''}
+                                        `}
+                                    >
+                                        {!p.alive && <div className="dead-overlay">DEAD</div>}
+                                        <div className="w-16 h-16 mb-2 border border-gray-600 bg-gray-900 p-1">
+                                            <AnimalAvatar seed={p.name} />
+                                        </div>
+                                        <span className="font-bold truncate w-full text-center">{p.name} {p.id === myId && '(나)'}</span>
+                                        <span className={`text-xs mt-1 ${p.role === '마피아' ? 'text-red-400' : 'text-gray-400'}`}>{p.role}</span>
+                                        
+                                        {/* 투표 바 */}
+                                        {renderProgressBar(p.id, displayState)}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* 우측: 폰 형태의 채팅 UI [수정점] flex-none 속성 유지, 우측 정렬된 폭 보장 */}
+                    <div className="w-full md:w-96 flex-none flex flex-col phone-chat-ui z-10 h-[60vh] md:h-full">
+                        {/* 채팅 헤더 (높이 고정) */}
+                        <div className="flex-none bg-blue-900 border-b border-blue-500 p-3 flex justify-between items-center text-xs">
+                            <span>SECURE_COMMS</span>
+                            <span className="text-cyan-300">{(new Date()).toLocaleTimeString()}</span>
+                        </div>
+                        
+                        {/* 채팅 메시지 영역 (가변 높이, 스크롤) [수정점] min-h-0 유지 */}
+                        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 bg-transparent min-h-0">
+                            {displayState.chat.map((c, i) => {
+                                if (c.sender === 'SYSTEM') {
+                                    return (
+                                        <div key={i} className="text-center my-2 text-cyan-400 text-sm border border-cyan-800 bg-black bg-opacity-50 p-2 uppercase shrink-0">
+                                            {c.msg}
+                                        </div>
+                                    );
+                                }
+                                const isMe = c.sender === playerName;
+                                return (
+                                    <div key={i} className={`flex flex-col shrink-0 ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <span className="text-[10px] text-gray-500 mb-1">{c.sender}</span>
+                                        <div className={`px-3 py-2 text-sm max-w-[85%] break-words ${isMe ? 'bg-blue-800 border-l-2 border-cyan-400' : 'bg-gray-800 border-r-2 border-gray-400'}`}>
+                                            {c.msg}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {privateMsg && (
+                                <div className="text-center my-2 text-blue-300 text-sm border border-blue-600 bg-blue-900 bg-opacity-30 p-2 font-bold animate-pulse shrink-0">
+                                    {privateMsg}
+                                </div>
+                            )}
+                            <div ref={chatEndRef} className="shrink-0" />
+                        </div>
+
+                        {/* 채팅 입력 영역 (높이 고정) */}
+                        <form onSubmit={sendChat} className="flex-none p-2 border-t border-blue-800 bg-black flex gap-2">
+                            <input 
+                                name="msg" 
+                                type="text" 
+                                className="flex-1 bg-gray-900 border border-blue-900 text-white p-2 text-sm outline-none focus:border-cyan-500"
+                                placeholder={(!me || !me.alive) ? "죽은 자는 말이 없습니다" : (displayState.phase.startsWith('NIGHT') ? "밤에는 조용히..." : "메시지 전송...")}
+                                disabled={!me || !me.alive || displayState.phase.startsWith('NIGHT')}
+                                autoComplete="off"
+                            />
+                            <button 
+                                type="submit" 
+                                disabled={!me || !me.alive || displayState.phase.startsWith('NIGHT')}
+                                className="bg-blue-800 border border-blue-500 text-white px-4 py-2 text-sm font-bold disabled:opacity-50 hover:bg-blue-700"
+                            >
+                                전송
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
