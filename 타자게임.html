@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYPHER : NEON RHYTHM</title>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        @import url('https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+        :root {
+            --bg-color: #08040d;
+            --surface-color: #12091c;
+            --text-main: #ffffff;
+            --text-dim: #554d66;
+            --neon-cyan: #00f0ff;
+            --neon-magenta: #ff0055;
+            --neon-yellow: #ffea00;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background: radial-gradient(circle at center, var(--surface-color) 0%, var(--bg-color) 100%);
+            color: var(--text-main);
+            font-family: 'Pretendard', sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .eng-font { font-family: 'Syncopate', sans-serif; }
+        .mono-font { font-family: 'JetBrains Mono', monospace; }
+        .hidden { display: none !important; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-5px) rotate(-1deg); }
+            40% { transform: translateX(5px) rotate(1deg); }
+            60% { transform: translateX(-3px); }
+            80% { transform: translateX(3px); }
+        }
+        .shake-effect { animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both; }
+
+        @keyframes pulse-glow {
+            0% { text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan); transform: scale(1); }
+            50% { text-shadow: 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan); transform: scale(1.02); }
+            100% { text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan); transform: scale(1); }
+        }
+        .attack-glow { animation: pulse-glow 0.4s ease-out; }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(8, 4, 13, 0.95);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.5s ease;
+        }
+
+        .overlay h1 {
+            font-size: 4rem;
+            letter-spacing: 0.5rem;
+            margin-bottom: 30px;
+            text-shadow: 3px 3px 0 var(--neon-magenta), -3px -3px 0 var(--neon-cyan);
+        }
+
+        .track-list {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .track-list::-webkit-scrollbar { width: 0; }
+
+        .track-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .track-card::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.1), transparent);
+            transition: all 0.5s ease;
+        }
+
+        .track-card:hover::before { left: 100%; }
+        .track-card:hover {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+            transform: translateX(10px);
+        }
+
+        .track-info { display: flex; flex-direction: column; gap: 5px; }
+        .track-title { font-size: 1.5rem; font-weight: 700; color: var(--text-main); }
+        .track-artist { font-size: 1rem; color: var(--neon-magenta); letter-spacing: 2px; }
+        .track-diff { font-size: 1.2rem; color: var(--neon-yellow); letter-spacing: 3px; }
+
+        .btn {
+            padding: 16px 48px;
+            font-size: 1.2rem;
+            background: transparent;
+            color: var(--text-main);
+            border: 2px solid var(--neon-cyan);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.2) inset, 0 0 15px rgba(0, 240, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        .btn:hover { text-shadow: 0 0 8px var(--neon-cyan); box-shadow: 0 0 25px rgba(0, 240, 255, 0.5) inset, 0 0 25px rgba(0, 240, 255, 0.5); }
+
+        #hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 40px 60px 20px;
+            height: 120px;
+        }
+
+        .hp-section { width: 35%; }
+        
+        .hp-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .hp-name { font-size: 1.2rem; }
+        .hp-val { font-size: 1.2rem; color: #aaa; }
+
+        .hp-bar-bg {
+            width: 100%; height: 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .hp-bar-fill {
+            height: 100%;
+            transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        #player-hp-fill { background: var(--neon-cyan); box-shadow: 0 0 10px var(--neon-cyan); }
+        #ai-hp-fill { background: var(--neon-magenta); box-shadow: 0 0 10px var(--neon-magenta); float: right; }
+
+        #stage-display {
+            font-size: 1.5rem;
+            color: var(--text-dim);
+            text-shadow: 0 0 10px rgba(255,255,255,0.1);
+            text-align: center;
+            flex: 1;
+            padding: 0 20px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #arena {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            padding: 0 50px;
+        }
+
+        #turn-indicator {
+            position: absolute;
+            top: 20px;
+            font-size: 1rem;
+            letter-spacing: 4px;
+            color: var(--neon-yellow);
+            text-shadow: 0 0 10px rgba(255, 234, 0, 0.3);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #rap-display {
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-align: center;
+            line-height: 1.5;
+            min-height: 150px;
+            word-break: keep-all;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px 5px;
+        }
+
+        .word-group { display: flex; }
+        .char { transition: color 0.1s; border-bottom: 3px solid transparent; padding: 0 1px; }
+        .char.dim { color: var(--text-dim); }
+        .char.correct { color: var(--neon-cyan); text-shadow: 0 0 10px var(--neon-cyan); }
+        .char.error { color: var(--neon-magenta); text-shadow: 0 0 10px var(--neon-magenta); border-bottom: 3px solid var(--neon-magenta); }
+        .char.active { border-bottom: 3px solid var(--text-main); }
+        .char.space { width: 12px; }
+
+        #judgement {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scale(0.5);
+            font-size: 4rem;
+            font-weight: 900;
+            opacity: 0;
+            pointer-events: none;
+            text-shadow: 0 0 20px currentColor;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 10;
+        }
+
+        #stats {
+            height: 100px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0 100px;
+            background: rgba(0,0,0,0.5);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            position: relative;
+        }
+
+        .stat-box { text-align: center; }
+        .stat-label { font-size: 0.8rem; color: #888; letter-spacing: 2px; margin-bottom: 5px; }
+        .stat-val { font-size: 1.8rem; font-weight: 700; color: var(--text-main); }
+
+        #combo-val { color: var(--neon-yellow); text-shadow: 0 0 10px rgba(255, 234, 0, 0.3); }
+
+        #timer-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 4px;
+            background: #111;
+        }
+        #timer-fill {
+            height: 100%; width: 100%;
+            background: var(--text-main);
+            box-shadow: 0 0 10px var(--text-main);
+            transition: background-color 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="track-select-screen" class="overlay">
+        <h1 class="eng-font">SELECT TRACK</h1>
+        <div class="track-list" id="track-list-container"></div>
+    </div>
+
+    <div id="end-screen" class="overlay hidden">
+        <h1 id="end-title" class="eng-font"></h1>
+        <p id="end-desc"></p>
+        <div id="end-stats" style="display:flex; gap: 40px; margin-bottom: 40px; font-size: 1.5rem;" class="eng-font"></div>
+        <button class="btn eng-font" onclick="backToMenu()">BACK TO MENU</button>
+    </div>
+
+    <div id="hud">
+        <div class="hp-section">
+            <div class="hp-header">
+                <span class="hp-name eng-font">PLAYER</span>
+                <span class="hp-val mono-font" id="player-hp-text">100</span>
+            </div>
+            <div class="hp-bar-bg"><div id="player-hp-fill" class="hp-bar-fill"></div></div>
+        </div>
+
+        <div id="stage-display" class="eng-font">TRACK TITLE</div>
+
+        <div class="hp-section">
+            <div class="hp-header">
+                <span class="hp-val mono-font" id="ai-hp-text">100</span>
+                <span class="hp-name eng-font" id="ai-name" style="color: var(--neon-magenta);">AI</span>
+            </div>
+            <div class="hp-bar-bg"><div id="ai-hp-fill" class="hp-bar-fill"></div></div>
+        </div>
+    </div>
+
+    <div id="arena">
+        <div id="turn-indicator" class="eng-font"></div>
+        <div id="rap-display"></div>
+        <div id="judgement" class="eng-font"></div>
+    </div>
+
+    <div id="stats">
+        <div id="timer-container"><div id="timer-fill"></div></div>
+        <div class="stat-box">
+            <div class="stat-label eng-font">COMBO</div>
+            <div class="stat-val mono-font" id="combo-val">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label eng-font">ACCURACY</div>
+            <div class="stat-val mono-font" id="acc-val">100%</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label eng-font">SPEED (CPM)</div>
+            <div class="stat-val mono-font" id="cpm-val">0</div>
+        </div>
+    </div>
+
+    <script>
+        // Web Audio API 및 비트 제너레이터
+        let audioCtx;
+        let beatTimer;
+        let nextNoteTime = 0;
+        let current16thNote = 0;
+        let currentBpm = 90;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'hit') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.05);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'miss') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'attack') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                osc.start(now); osc.stop(now + 0.4);
+            }
+        }
+
+        function scheduleNote(beatNumber, time) {
+            if (beatNumber % 8 === 0 || beatNumber === 10) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.frequency.setValueAtTime(120, time);
+                osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+                gain.gain.setValueAtTime(0.4, time);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+                osc.start(time); osc.stop(time + 0.5);
+            }
+            if (beatNumber % 8 === 4) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(250, time);
+                gain.gain.setValueAtTime(0.2, time);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+                osc.start(time); osc.stop(time + 0.2);
+            }
+            if (beatNumber % 2 === 0) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(8000, time);
+                gain.gain.setValueAtTime(0.03, time);
+                gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+                osc.start(time); osc.stop(time + 0.05);
+            }
+        }
+
+        function nextNote() {
+            const secondsPerBeat = 60.0 / currentBpm;
+            nextNoteTime += 0.25 * secondsPerBeat;
+            current16thNote++;
+            if (current16thNote === 16) current16thNote = 0;
+        }
+
+        function playBeatLoop() {
+            while (nextNoteTime < audioCtx.currentTime + 0.1) {
+                scheduleNote(current16thNote, nextNoteTime);
+                nextNote();
+            }
+            beatTimer = requestAnimationFrame(playBeatLoop);
+        }
+
+        function startBeat(bpm) {
+            if (!audioCtx) initAudio();
+            currentBpm = bpm || 90;
+            if (beatTimer) cancelAnimationFrame(beatTimer);
+            current16thNote = 0;
+            nextNoteTime = audioCtx.currentTime + 0.05;
+            playBeatLoop();
+        }
+
+        function stopBeat() {
+            if (beatTimer) cancelAnimationFrame(beatTimer);
+        }
+
+        // 한국 힙합 10곡 + 튜토리얼
+        const tracks = [
+            {
+                id: "tutorial", title: "Tutorial", artist: "SYSTEM", difficulty: "★☆☆☆☆", aiMaxHp: 500, bpm: 90,
+                phrases: [
+                    { text: "비트를 타", timeLimit: 8000 },
+                    { text: "열기를 느껴 마이크를 잡아", timeLimit: 9000 },
+                    { text: "시작된 리듬 위를 걷는 나의 플로우", timeLimit: 10000 },
+                    { text: "어둠을 가르고 나오는 내 목소리가 들리니", timeLimit: 12000 },
+                    { text: "현란한 라임의 교차점 쉴 틈 없이 터지는 호흡", timeLimit: 13000 }
+                ]
+            },
+            {
+                id: "dynamicduo", title: "고백 (Go Back)", artist: "Dynamic Duo", difficulty: "★★☆☆☆", aiMaxHp: 650, bpm: 95,
+                phrases: [
+                    { text: "시간은 참 빨리도 가는구만", timeLimit: 8500 },
+                    { text: "어느새 내 나이 스물여덟", timeLimit: 8500 },
+                    { text: "그동안 난 뭘 했을까", timeLimit: 8000 },
+                    { text: "생각해보면 참 많은 일이 있었지", timeLimit: 9500 },
+                    { text: "하지만 후회는 없어 지금의 내가 있기에", timeLimit: 11000 },
+                    { text: "앞으로 달려갈 날들이 더 많으니까", timeLimit: 10500 }
+                ]
+            },
+            {
+                id: "illionaire", title: "연결고리 (YGGR)", artist: "ILLIONAIRE", difficulty: "★★☆☆☆", aiMaxHp: 650, bpm: 85,
+                phrases: [
+                    { text: "너와 나의 연결 고리", timeLimit: 7500 },
+                    { text: "이건 우리 안의 소리", timeLimit: 7500 },
+                    { text: "매일 밤 굽던 소시지", timeLimit: 8000 },
+                    { text: "이젠 내가 사 먹지", timeLimit: 7500 },
+                    { text: "너와 나의 연결 고리 이건 우리 안의 소리", timeLimit: 11000 }
+                ]
+            },
+            {
+                id: "zico", title: "Okey Dokey", artist: "ZICO", difficulty: "★★★☆☆", aiMaxHp: 700, bpm: 105,
+                phrases: [
+                    { text: "Is that true Yes okey dokey yo", timeLimit: 9000 },
+                    { text: "정말로 Yes okey dokey yo", timeLimit: 8500 },
+                    { text: "앞으로 나와 함께 춤출래", timeLimit: 8000 },
+                    { text: "그 전에 먼저 하나 물을게", timeLimit: 8000 },
+                    { text: "너도 나처럼 놀 수 있어", timeLimit: 8000 },
+                    { text: "그럼 제대로 한번 뽐내볼까", timeLimit: 8500 }
+                ]
+            },
+            {
+                id: "esens", title: "독 (Poison)", artist: "Primary ft. E-Sens", difficulty: "★★★☆☆", aiMaxHp: 750, bpm: 88,
+                phrases: [
+                    { text: "급하게 따라가다 보면", timeLimit: 7500 },
+                    { text: "어떤 게 나인지 잊어버려 다들", timeLimit: 9000 },
+                    { text: "난 멈추지 않아 끝을 볼 때까지", timeLimit: 9500 },
+                    { text: "내 안에 품은 독을 뱉어낼 때까지", timeLimit: 10000 },
+                    { text: "이 험한 세상에서 나를 지키는 법", timeLimit: 9500 }
+                ]
+            },
+            {
+                id: "simond", title: "Simon Dominic", artist: "Simon Dominic", difficulty: "★★★☆☆", aiMaxHp: 750, bpm: 92,
+                phrases: [
+                    { text: "Simon Simon Dominic", timeLimit: 7000 },
+                    { text: "Simon D o m i n i c oh oh", timeLimit: 8500 },
+                    { text: "밤을 새워가며 만들었던 노래", timeLimit: 9000 },
+                    { text: "이젠 모두가 따라부르네", timeLimit: 8500 },
+                    { text: "나의 이름을 크게 외쳐봐", timeLimit: 8000 }
+                ]
+            },
+            {
+                id: "beenzino", title: "Dali, Van, Picasso", artist: "Beenzino", difficulty: "★★★☆☆", aiMaxHp: 800, bpm: 90,
+                phrases: [
+                    { text: "Dali Van Picasso 난 숨은 그림을 찾고", timeLimit: 11000 },
+                    { text: "내 물감은 내 땀과 피", timeLimit: 7500 },
+                    { text: "아마도 내가 며칠 밤을 새운", timeLimit: 8500 },
+                    { text: "이 작품을 망치고 싶지 않아", timeLimit: 9000 },
+                    { text: "새로운 그림을 그려 내 도화지 위에", timeLimit: 10000 },
+                    { text: "누구도 흉내낼 수 없는 나의 마스터피스", timeLimit: 11000 }
+                ]
+            },
+            {
+                id: "bewhy", title: "Forever", artist: "BewhY", difficulty: "★★★★☆", aiMaxHp: 850, bpm: 120,
+                phrases: [
+                    { text: "무의식적으로 내가 원했던 걸", timeLimit: 8500 },
+                    { text: "이 세상은 내게 줬어", timeLimit: 7000 },
+                    { text: "나는 내 피사체들을 아주 사랑해", timeLimit: 9000 },
+                    { text: "난 영원한 걸 원해", timeLimit: 7000 },
+                    { text: "영원히 남을 내 랩 나의 존재 나의 음악 나의 삶", timeLimit: 12000 },
+                    { text: "누구도 부정할 수 없는 진리를 새겨", timeLimit: 10000 }
+                ]
+            },
+            {
+                id: "changmo", title: "METEOR", artist: "CHANGMO", difficulty: "★★★★☆", aiMaxHp: 850, bpm: 110,
+                phrases: [
+                    { text: "모두 그에게 말해 또 왔네", timeLimit: 8000 },
+                    { text: "새꺄 벌어라 벌어 널 놀린", timeLimit: 8000 },
+                    { text: "별똥별이 떨어지던 곳에서", timeLimit: 8500 },
+                    { text: "비상해 하늘엔 내 이력서", timeLimit: 8500 },
+                    { text: "멋진 옷 멋진 차 멋진 집", timeLimit: 8000 },
+                    { text: "다 샀고 이젠 내가 멋진 놈", timeLimit: 8000 }
+                ]
+            },
+            {
+                id: "epikhigh", title: "Born Hater", artist: "Epik High", difficulty: "★★★★☆", aiMaxHp: 900, bpm: 85,
+                phrases: [
+                    { text: "I am a born hater", timeLimit: 7000 },
+                    { text: "다모클레스의 칼 내 머리 위로 떨어져도", timeLimit: 11000 },
+                    { text: "나는 멈추지 않아 절대로", timeLimit: 8500 },
+                    { text: "이 모든 건 나의 삶의 일부", timeLimit: 9000 },
+                    { text: "바닥에서 올라와 여기까지 왔지", timeLimit: 9500 },
+                    { text: "니들이 떠들 때 난 증명해냈어", timeLimit: 9500 }
+                ]
+            },
+            {
+                id: "outsider", title: "외톨이", artist: "Outsider", difficulty: "★★★★★", aiMaxHp: 1000, bpm: 140,
+                phrases: [
+                    { text: "상처를 치료해줄 사람 어디 없나", timeLimit: 8000 },
+                    { text: "가만히 놔두다간 끊임없이 덧나", timeLimit: 8000 },
+                    { text: "사랑도 사람도 너무나도 겁나", timeLimit: 8000 },
+                    { text: "혼자인게 무서워 난 잊혀질까 두려워", timeLimit: 9000 },
+                    { text: "언제나 외톨이 맘의 문을 닫고", timeLimit: 8000 },
+                    { text: "슬픔을 등을 지고 살아가는 바보", timeLimit: 8000 },
+                    { text: "두 눈을 감고 두 귀를 막고", timeLimit: 7500 },
+                    { text: "캄캄한 어둠 속에 내 자신을 가두고", timeLimit: 9000 },
+                    { text: "얼마나 지나야 이 어둠이 걷힐까", timeLimit: 8500 },
+                    { text: "상처가 아물어 다시 웃을 수 있을까", timeLimit: 9000 }
+                ]
+            }
+        ];
+
+        // -------------------------
+        // 한글 -> 영문 키 분해기 (Jamo Decomposer)
+        // -------------------------
+        const CHOSUNG = ['r', 'R', 's', 'e', 'E', 'f', 'a', 'q', 'Q', 't', 'T', 'd', 'w', 'W', 'c', 'z', 'x', 'v', 'g'];
+        const JUNGSUNG = ['k', 'o', 'i', 'O', 'j', 'p', 'u', 'P', 'h', 'hk', 'ho', 'hl', 'y', 'n', 'nj', 'np', 'nl', 'b', 'm', 'ml', 'l'];
+        const JONGSUNG = ['', 'r', 'R', 'rt', 's', 'sw', 'sg', 'e', 'f', 'fr', 'fa', 'fq', 'ft', 'fx', 'fv', 'fg', 'a', 'q', 'qt', 't', 'T', 'd', 'w', 'c', 'z', 'x', 'v', 'g'];
+
+        // 키보드 Code -> 물리 키 매핑 (IME 독립적)
+        const codeToKey = {
+            'KeyQ':'q', 'KeyW':'w', 'KeyE':'e', 'KeyR':'r', 'KeyT':'t', 'KeyY':'y', 'KeyU':'u', 'KeyI':'i', 'KeyO':'o', 'KeyP':'p',
+            'KeyA':'a', 'KeyS':'s', 'KeyD':'d', 'KeyF':'f', 'KeyG':'g', 'KeyH':'h', 'KeyJ':'j', 'KeyK':'k', 'KeyL':'l',
+            'KeyZ':'z', 'KeyX':'x', 'KeyC':'c', 'KeyV':'v', 'KeyB':'b', 'KeyN':'n', 'KeyM':'m',
+            'Space':' ', 'Comma':',', 'Period':'.', 'Slash':'/', 'Minus':'-', 'Quote':"'", 'Digit1':'1', 'Digit2':'2'
+        };
+
+        function decomposeText(text) {
+            let keys = [];
+            let charMap = [];
+
+            for (let i = 0; i < text.length; i++) {
+                let char = text[i];
+                let code = char.charCodeAt(0);
+
+                if (code >= 0xAC00 && code <= 0xD7A3) { // 한글 완성형
+                    let index = code - 0xAC00;
+                    let cho = Math.floor(index / 588);
+                    let jung = Math.floor((index - cho * 588) / 28);
+                    let jong = index % 28;
+
+                    keys.push(CHOSUNG[cho]); charMap.push(i);
+                    
+                    let jungStr = JUNGSUNG[jung];
+                    for(let j=0; j<jungStr.length; j++) {
+                        keys.push(jungStr[j]); charMap.push(i);
+                    }
+
+                    if (jong > 0) {
+                        let jongStr = JONGSUNG[jong];
+                        for(let j=0; j<jongStr.length; j++) {
+                            keys.push(jongStr[j]); charMap.push(i);
+                        }
+                    }
+                } else {
+                    keys.push(char); charMap.push(i); // 영어, 공백 등
+                }
+            }
+            return { keys, charMap };
+        }
+
+        // 게임 상태
+        let currentTrack = null;
+        let currentPhraseIndex = 0;
+        let playerMaxHp = 100;
+        let playerHp = 100;
+        let aiMaxHp = 100;
+        let aiHp = 100;
+        
+        let targetText = "";
+        let currentPhraseData = null;
+        let currentKeyIndex = 0; // 타건 진행 위치
+
+        let turnTimer = null;
+        let timeLeft = 0;
+        let turnStartTime = 0;
+        let isPlayerTurn = false;
+        let isErrorState = false;
+        let errorTimeout = null;
+
+        let currentCombo = 0;
+        let maxCombo = 0;
+        let mistakes = 0;
+        let totalStats = { hits: 0, misses: 0, damageDealt: 0 };
+
+        // DOM 요소
+        const elPlayerHpFill = document.getElementById('player-hp-fill');
+        const elPlayerHpText = document.getElementById('player-hp-text');
+        const elAiHpFill = document.getElementById('ai-hp-fill');
+        const elAiHpText = document.getElementById('ai-hp-text');
+        const elAiName = document.getElementById('ai-name');
+        const elStageDisplay = document.getElementById('stage-display');
+        
+        const elTurnIndicator = document.getElementById('turn-indicator');
+        const elRapDisplay = document.getElementById('rap-display');
+        const elTimerFill = document.getElementById('timer-fill');
+        const elJudgement = document.getElementById('judgement');
+        
+        const elComboVal = document.getElementById('combo-val');
+        const elAccVal = document.getElementById('acc-val');
+        const elCpmVal = document.getElementById('cpm-val');
+
+        function initMenu() {
+            const container = document.getElementById('track-list-container');
+            container.innerHTML = '';
+            
+            tracks.forEach(track => {
+                const card = document.createElement('div');
+                card.className = 'track-card';
+                card.onclick = () => selectTrack(track.id);
+                
+                card.innerHTML = `
+                    <div class="track-info">
+                        <span class="track-title">${track.title}</span>
+                        <span class="track-artist eng-font">${track.artist}</span>
+                    </div>
+                    <div class="track-diff">${track.difficulty}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+        initMenu();
+
+        function backToMenu() {
+            stopBeat();
+            document.getElementById('end-screen').classList.add('hidden');
+            document.getElementById('track-select-screen').classList.remove('hidden');
+        }
+
+        function selectTrack(trackId) {
+            initAudio();
+            currentTrack = tracks.find(t => t.id === trackId);
+            
+            document.getElementById('track-select-screen').classList.add('hidden');
+            
+            currentPhraseIndex = 0;
+            playerHp = playerMaxHp;
+            aiMaxHp = currentTrack.aiMaxHp;
+            aiHp = aiMaxHp;
+            totalStats = { hits: 0, misses: 0, damageDealt: 0 };
+
+            elAiName.innerText = currentTrack.artist;
+            elStageDisplay.innerText = currentTrack.title;
+            
+            updateHUD();
+            startBeat(currentTrack.bpm);
+            setTimeout(startTurn, 1000);
+        }
+
+        function updateHUD() {
+            elPlayerHpFill.style.width = `${Math.max(0, (playerHp / playerMaxHp) * 100)}%`;
+            elPlayerHpText.innerText = Math.max(0, Math.floor(playerHp));
+            
+            elAiHpFill.style.width = `${Math.max(0, (aiHp / aiMaxHp) * 100)}%`;
+            elAiHpText.innerText = Math.max(0, Math.floor(aiHp));
+        }
+
+        function updateStatsUI(combo, acc, cpm) {
+            elComboVal.innerText = combo;
+            elAccVal.innerText = `${acc}%`;
+            elCpmVal.innerText = cpm;
+            
+            if(combo > 15) elComboVal.style.color = 'var(--neon-magenta)';
+            else if(combo > 5) elComboVal.style.color = 'var(--neon-cyan)';
+            else elComboVal.style.color = 'var(--neon-yellow)';
+        }
+
+        function startTurn() {
+            if (currentPhraseIndex >= currentTrack.phrases.length) {
+                currentPhraseIndex = 0; 
+            }
+
+            isPlayerTurn = false;
+            elTimerFill.style.width = '100%';
+            elTimerFill.style.backgroundColor = 'var(--text-main)';
+            
+            const phraseData = currentTrack.phrases[currentPhraseIndex];
+            targetText = phraseData.text;
+            
+            elTurnIndicator.innerText = `${currentTrack.artist} SPITTING...`;
+            elTurnIndicator.style.color = "var(--neon-magenta)";
+            elTurnIndicator.style.opacity = 1;
+            
+            updateStatsUI(0, 100, 0);
+
+            elRapDisplay.innerHTML = '';
+            const words = targetText.split(' ');
+            
+            let html = '';
+            words.forEach((w, i) => {
+                html += `<div class="word-group" id="ai-word-${i}" style="opacity:0; transform:translateY(10px); margin:0 8px; transition:all 0.2s cubic-bezier(.17,.89,.32,1.28);">`;
+                html += `<span>${w}</span></div>`;
+            });
+            elRapDisplay.innerHTML = html;
+
+            let baseDelay = Math.min(150, phraseData.timeLimit / words.length * 0.3);
+            let delay = 0;
+            
+            words.forEach((w, i) => {
+                setTimeout(() => {
+                    const el = document.getElementById(`ai-word-${i}`);
+                    if(el) {
+                        el.style.opacity = 1;
+                        el.style.transform = 'translateY(0)';
+                        playSound('hit');
+                    }
+                }, delay);
+                delay += baseDelay;
+            });
+
+            setTimeout(() => {
+                startPlayerTurn(phraseData.timeLimit);
+            }, delay + 400);
+        }
+
+        function startPlayerTurn(timeLimit) {
+            isPlayerTurn = true;
+            elTurnIndicator.innerText = "PLAYER TURN // TYPE NOW";
+            elTurnIndicator.style.color = "var(--neon-cyan)";
+            
+            currentPhraseData = decomposeText(targetText);
+            currentKeyIndex = 0;
+            currentCombo = 0;
+            maxCombo = 0;
+            mistakes = 0;
+            turnStartTime = Date.now();
+            isErrorState = false;
+            
+            renderPlayerText();
+            
+            timeLeft = timeLimit;
+            clearInterval(turnTimer);
+            let lastTick = Date.now();
+            
+            turnTimer = setInterval(() => {
+                let now = Date.now();
+                timeLeft -= (now - lastTick);
+                lastTick = now;
+                
+                let pct = (timeLeft / timeLimit) * 100;
+                elTimerFill.style.width = `${Math.max(0, pct)}%`;
+                
+                if(pct < 30) elTimerFill.style.backgroundColor = 'var(--neon-magenta)';
+                
+                if (timeLeft <= 0) {
+                    clearInterval(turnTimer);
+                    finishPlayerTurn(false);
+                }
+            }, 16);
+        }
+
+        // 새로운 물리 키보드 리스너 (IME 완벽 무시)
+        document.addEventListener('keydown', (e) => {
+            if (!isPlayerTurn) return;
+            if (e.repeat) return; // 꾹 누름 방지
+            
+            // 키 코드 매핑 가져오기
+            let typedCodeKey = codeToKey[e.code];
+            if (!typedCodeKey) return; // Shift, Ctrl 등 특수키 무시
+
+            // 쌍자음, 이중모음을 위해 Shift키 상태 반영
+            if (e.shiftKey) {
+                typedCodeKey = typedCodeKey.toUpperCase();
+            }
+
+            let expectedKey = currentPhraseData.keys[currentKeyIndex];
+
+            // 매칭 검사
+            let match = false;
+            if (expectedKey === expectedKey.toUpperCase() && expectedKey !== expectedKey.toLowerCase()) {
+                // 대문자(쌍자음 등) 검사
+                if (typedCodeKey === expectedKey) match = true;
+            } else {
+                // 소문자 및 영문 대소문자 무시 검사
+                if (typedCodeKey.toLowerCase() === expectedKey.toLowerCase()) match = true;
+            }
+
+            if (match) {
+                // 정확하게 입력됨!
+                currentKeyIndex++;
+                playSound('hit');
+                currentCombo++;
+                totalStats.hits++;
+                maxCombo = Math.max(maxCombo, currentCombo);
+                
+                renderPlayerText();
+
+                let acc = Math.max(0, 100 - (mistakes * 5));
+                let timeElapsed = (Date.now() - turnStartTime) / 60000;
+                let cpm = Math.floor(currentKeyIndex / timeElapsed) || 0;
+                updateStatsUI(currentCombo, acc, cpm);
+
+                if (currentKeyIndex >= currentPhraseData.keys.length) {
+                    clearInterval(turnTimer);
+                    finishPlayerTurn(true);
+                }
+            } else {
+                // 오타 발생!
+                currentCombo = 0;
+                mistakes++;
+                totalStats.misses++;
+                playSound('miss');
+                
+                document.body.classList.add('shake-effect');
+                setTimeout(() => document.body.classList.remove('shake-effect'), 300);
+
+                isErrorState = true;
+                renderPlayerText();
+                
+                clearTimeout(errorTimeout);
+                errorTimeout = setTimeout(() => {
+                    isErrorState = false;
+                    renderPlayerText();
+                }, 200); // 0.2초간 에러 표시 후 원복
+
+                let acc = Math.max(0, 100 - (mistakes * 5));
+                let timeElapsed = (Date.now() - turnStartTime) / 60000;
+                let cpm = Math.floor(currentKeyIndex / timeElapsed) || 0;
+                updateStatsUI(currentCombo, acc, cpm);
+            }
+        });
+
+        // 타건 상태에 따른 UI 렌더링 (자음/모음 단위 진행도 반영)
+        function renderPlayerText() {
+            let html = '';
+            // 현재 입력중인 글자 인덱스 확인
+            let activeCharIndex = currentKeyIndex < currentPhraseData.charMap.length ? currentPhraseData.charMap[currentKeyIndex] : 9999;
+
+            let words = targetText.split(' ');
+            let charCounter = 0;
+
+            words.forEach((word, wIdx) => {
+                html += `<div class="word-group">`;
+                for (let i = 0; i < word.length; i++) {
+                    let tChar = word[i];
+                    let cClass = 'char dim';
+                    
+                    if (charCounter < activeCharIndex) cClass = 'char correct';
+                    else if (charCounter === activeCharIndex) {
+                        if (isErrorState) cClass = 'char error';
+                        else cClass = 'char active'; // 현재 타이핑 중인 글자
+                    }
+                    
+                    html += `<span class="${cClass}">${tChar}</span>`;
+                    charCounter++;
+                }
+                html += `</div>`;
+                
+                if (wIdx < words.length - 1) {
+                    let sClass = 'char space';
+                    if (charCounter < activeCharIndex) sClass += ' correct';
+                    else if (charCounter === activeCharIndex) {
+                        if (isErrorState) sClass += ' error';
+                        else sClass += ' active';
+                    }
+                    html += `<span class="${sClass}">&nbsp;</span>`;
+                    charCounter++;
+                }
+            });
+            elRapDisplay.innerHTML = html;
+        }
+
+        function finishPlayerTurn(success) {
+            isPlayerTurn = false;
+            elTurnIndicator.style.opacity = 0;
+
+            if (success) {
+                let acc = Math.max(0, 100 - (mistakes * 5));
+                let timeElapsed = (Date.now() - turnStartTime) / 60000;
+                let cpm = Math.floor(currentPhraseData.keys.length / timeElapsed) || 0;
+
+                let speedMult = cpm > 600 ? 1.5 : (cpm > 400 ? 1.2 : 1.0);
+                let comboMult = 1 + (maxCombo / currentPhraseData.keys.length) * 0.5;
+                
+                let baseDmg = targetText.length * 2.5; 
+                let damage = Math.floor(baseDmg * (acc / 100) * speedMult * comboMult);
+                totalStats.damageDealt += damage;
+
+                let rank = acc === 100 ? "PERFECT" : (acc > 85 ? "GREAT" : "GOOD");
+                let color = acc === 100 ? "var(--neon-cyan)" : (acc > 85 ? "var(--neon-yellow)" : "#fff");
+                
+                showJudgement(rank, color);
+                applyDamage('ai', damage);
+            } else {
+                showJudgement("TIME OUT", "var(--neon-magenta)");
+                let damage = 20;
+                applyDamage('player', damage);
+            }
+        }
+
+        function showJudgement(text, color) {
+            elJudgement.innerText = text;
+            elJudgement.style.color = color;
+            elJudgement.style.opacity = 1;
+            elJudgement.style.transform = "translate(-50%, -50%) scale(1)";
+            
+            setTimeout(() => {
+                elJudgement.style.opacity = 0;
+                elJudgement.style.transform = "translate(-50%, -50%) scale(0.5)";
+            }, 800);
+        }
+
+        function applyDamage(target, amount) {
+            playSound('attack');
+            
+            if (target === 'ai') {
+                aiHp -= amount;
+                elRapDisplay.classList.add('attack-glow');
+                setTimeout(() => elRapDisplay.classList.remove('attack-glow'), 400);
+            } else {
+                playerHp -= amount;
+                document.body.classList.add('shake-effect');
+                document.body.style.backgroundColor = 'rgba(255,0,85,0.2)';
+                setTimeout(() => {
+                    document.body.classList.remove('shake-effect');
+                    document.body.style.backgroundColor = '';
+                }, 400);
+            }
+
+            updateHUD();
+
+            setTimeout(() => {
+                if (playerHp <= 0) {
+                    endGame(false);
+                } else if (aiHp <= 0) {
+                    endGame(true);
+                } else {
+                    currentPhraseIndex++;
+                    startTurn(); 
+                }
+            }, 1200);
+        }
+
+        function endGame(isVictory) {
+            stopBeat();
+            const screen = document.getElementById('end-screen');
+            const title = document.getElementById('end-title');
+            const desc = document.getElementById('end-desc');
+            const stats = document.getElementById('end-stats');
+            
+            screen.classList.remove('hidden');
+            
+            let totalAcc = totalStats.hits + totalStats.misses === 0 ? 0 : 
+                           Math.round((totalStats.hits / (totalStats.hits + totalStats.misses)) * 100);
+
+            stats.innerHTML = `
+                <div>DMG: ${totalStats.damageDealt}</div>
+                <div>ACC: ${totalAcc}%</div>
+            `;
+
+            if (isVictory) {
+                title.innerText = "TRACK CLEAR";
+                title.style.color = "var(--neon-cyan)";
+                desc.innerText = `${currentTrack.artist}의 비트를 완벽히 제압했습니다.`;
+            } else {
+                title.innerText = "SYSTEM DOWN";
+                title.style.color = "var(--neon-magenta)";
+                desc.innerText = "비트를 놓쳤습니다. 다시 도전하세요.";
+            }
+        }
+    </script>
+</body>
+</html>
