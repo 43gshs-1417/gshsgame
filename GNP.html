@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GSHS Night Pumpkin</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000;
+            display: flex; justify-content: center; align-items: center;
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden;
+            color: white;
+        }
+
+        #game-container {
+            position: relative;
+            width: 900px;
+            height: 650px;
+            box-shadow: 0 0 50px rgba(100, 0, 255, 0.4);
+            border: 4px solid #333;
+            background: linear-gradient(to bottom, #111133 0%, #050510 100%);
+        }
+
+        canvas { display: block; }
+        
+        #loading {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px; color: #0FF;
+            text-shadow: 2px 2px 0 #F0F;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="loading">LOADING ASSETS...</div>
+        <canvas id="gameCanvas" width="900" height="650" style="display:none;"></canvas>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+/* ==========================================
+   [이미지 에셋 시스템]
+========================================== */
+const ASSETS = {
+    player: createSVGImage(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+            <path d="M 50 100 Q 30 70 60 50 Q 80 20 110 40 Q 140 20 160 60 Q 180 90 150 110 Z" fill="#00FFFF" stroke="#000" stroke-width="6"/>
+            <path d="M 60 80 Q 50 140 100 140 Q 150 140 140 80 Z" fill="#FFDDC1" stroke="#000" stroke-width="6"/>
+            <path d="M 35 65 Q 100 15 165 65 L 150 85 Q 100 50 50 85 Z" fill="#E60000" stroke="#000" stroke-width="6"/>
+            <path d="M 120 40 L 185 55 L 175 75 L 130 60 Z" fill="#111" stroke="#000" stroke-width="5"/> 
+            <path d="M 70 90 L 95 95 M 130 90 L 105 95" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+            <ellipse cx="85" cy="105" rx="6" ry="12" fill="#000"/>
+            <ellipse cx="115" cy="105" rx="6" ry="12" fill="#000"/>
+            <path d="M 90 125 Q 100 135 110 125" stroke="#000" stroke-width="3" fill="none" stroke-linecap="round"/>
+            <path d="M 70 140 L 130 140 L 140 190 L 60 190 Z" fill="#FFF" stroke="#000" stroke-width="6"/>
+            <circle cx="100" cy="165" r="14" fill="none" stroke="#E60000" stroke-width="5"/>
+            <path d="M 90 155 L 110 175" stroke="#E60000" stroke-width="5"/>
+            <circle cx="160" cy="130" r="15" fill="#555" stroke="#000" stroke-width="5"/>
+            <circle cx="145" cy="140" r="12" fill="#FFDDC1" stroke="#000" stroke-width="4"/>
+            <path d="M 145 130 L 175 130 M 160 115 L 160 145" stroke="#000" stroke-width="2"/>
+        </svg>`),
+    bossGhost: createSVGImage(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+            <path d="M 40 150 C 40 40, 160 40, 160 150 Q 145 130, 130 150 Q 115 130, 100 150 Q 85 130, 70 150 Q 55 130, 40 150 Z" fill="#E0F7FA" stroke="#000" stroke-width="7"/>
+            <ellipse cx="80" cy="90" rx="12" ry="24" fill="#000"/>
+            <ellipse cx="120" cy="90" rx="12" ry="24" fill="#000"/>
+            <path d="M 90 125 Q 100 140 110 125" stroke="#000" stroke-width="5" fill="none" stroke-linecap="round"/>
+        </svg>`),
+    bossSkeleton: createSVGImage(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+            <circle cx="100" cy="60" r="45" fill="#FFF8DC" stroke="#000" stroke-width="6"/>
+            <circle cx="80" cy="55" r="14" fill="#000"/>
+            <circle cx="120" cy="55" r="14" fill="#000"/>
+            <path d="M 95 75 L 105 75 M 100 70 L 100 80" stroke="#000" stroke-width="3"/>
+            <rect x="80" y="100" width="40" height="20" rx="5" fill="#FFF8DC" stroke="#000" stroke-width="5"/>
+            <path d="M 90 100 L 90 120 M 100 100 L 100 120 M 110 100 L 110 120" stroke="#000" stroke-width="3"/>
+            <path d="M 100 120 L 100 180" stroke="#000" stroke-width="6"/>
+            <path d="M 60 135 L 140 135 M 70 155 L 130 155 M 80 175 L 120 175" stroke="#FFF8DC" stroke-width="12" stroke-linecap="round"/>
+            <path d="M 60 135 L 140 135 M 70 155 L 130 155 M 80 175 L 120 175" stroke="#000" stroke-width="4" stroke-linecap="round" fill="none"/>
+        </svg>`),
+    bossPumpkin: createSVGImage(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+            <path d="M 90 35 L 100 5 L 110 35 Z" fill="#2E7D32" stroke="#000" stroke-width="6"/>
+            <ellipse cx="100" cy="110" rx="80" ry="70" fill="#FF7518" stroke="#000" stroke-width="8"/>
+            <ellipse cx="100" cy="110" rx="50" ry="68" fill="none" stroke="#D84315" stroke-width="5"/>
+            <ellipse cx="100" cy="110" rx="20" ry="68" fill="none" stroke="#D84315" stroke-width="5"/>
+            <path d="M 55 80 L 85 105 L 45 105 Z" fill="#000"/>
+            <path d="M 145 80 L 155 105 L 115 105 Z" fill="#000"/>
+            <path d="M 45 130 L 65 145 L 85 130 L 100 155 L 115 130 L 135 145 L 155 130 L 100 175 Z" fill="#000"/>
+        </svg>`),
+
+    arrows: {
+        left: createArrow('#A1A1A1', '#FFF', 0), down: createArrow('#A1A1A1', '#FFF', 1),
+        up: createArrow('#A1A1A1', '#FFF', 2), right: createArrow('#A1A1A1', '#FFF', 3),
+        leftHit: createArrow('#C24B99', '#FF99D6', 0), downHit: createArrow('#00FFFF', '#99FFFF', 1),
+        upHit: createArrow('#12FA05', '#99FF99', 2), rightHit: createArrow('#F9393F', '#FF9999', 3)
+    }
+};
+
+let imagesLoaded = 0;
+const totalImages = 12;
+
+function createSVGImage(svgString) {
+    const img = new Image();
+    const encoded = encodeURIComponent(svgString.trim());
+    img.src = `data:image/svg+xml;charset=utf-8,${encoded}`;
+    img.onload = () => {
+        imagesLoaded++;
+        if(imagesLoaded === totalImages) initGame();
+    };
+    return img;
+}
+
+function createArrow(fillColor, innerColor, dir) {
+    let path = "";
+    if (dir === 0) path = "M 45 15 L 10 50 L 45 85 L 45 65 L 85 65 L 85 35 L 45 35 Z";
+    if (dir === 1) path = "M 15 45 L 50 85 L 85 45 L 65 45 L 65 10 L 35 10 L 35 45 Z";
+    if (dir === 2) path = "M 15 55 L 50 15 L 85 55 L 65 55 L 65 90 L 35 90 L 35 55 Z";
+    if (dir === 3) path = "M 55 15 L 90 50 L 55 85 L 55 65 L 15 65 L 15 35 L 55 35 Z";
+
+    return createSVGImage(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+            <path d="${path}" fill="${fillColor}" stroke="#000" stroke-width="8" stroke-linejoin="round"/>
+            <path d="${path}" fill="${innerColor}" opacity="0.4" transform="scale(0.6) translate(33,33)"/>
+        </svg>
+    `);
+}
+
+// --- 스테이지(보스) 정보 정의 ---
+const STAGES = [
+    { 
+        id: 1, title: "1. PUMPKIN BASS", boss: 'bossPumpkin', 
+        bpm: 100, synthType: 'square', freq: 150, density: 0.4, speed: 400 
+    },
+    { 
+        id: 2, title: "2. BONE CRUSHER", boss: 'bossSkeleton', 
+        bpm: 130, synthType: 'sawtooth', freq: 220, density: 0.6, speed: 600 
+    },
+    { 
+        id: 3, title: "3. GHOSTLY GROOVE", boss: 'bossGhost', 
+        bpm: 160, synthType: 'triangle', freq: 440, density: 0.85, speed: 800 
+    }
+];
+
+// 로컬 스토리지에서 하이스코어 불러오기
+function loadHighScores() {
+    let scores = {};
+    for(let i=0; i<STAGES.length; i++) {
+        let key = 'fnf_score_' + STAGES[i].id;
+        scores[STAGES[i].id] = localStorage.getItem(key) || 0;
+    }
+    return scores;
+}
+
+function saveHighScore(stageId, currentScore) {
+    let key = 'fnf_score_' + stageId;
+    let best = localStorage.getItem(key) || 0;
+    if (currentScore > best) {
+        localStorage.setItem(key, currentScore);
+        highScores[stageId] = currentScore;
+    }
+}
+
+let highScores = loadHighScores();
+
+// --- 게임 엔진 변수 ---
+const STATE = { TITLE: 0, FREEPLAY: 1, PLAYING: 2, GAMEOVER: 3, CLEAR: 4 };
+let currentState = STATE.TITLE;
+let selectedMenuIndex = 0; 
+
+const TARGET_Y = 100;
+const START_X = 280;
+const LANE_W = 90;
+const KEYS = [ ['ArrowLeft', 'a'], ['ArrowDown', 's'], ['ArrowUp', 'w'], ['ArrowRight', 'd'] ];
+const SONG_DURATION = 30; // 1곡당 플레이 시간 (초)
+
+let notes = [];
+let keysDown = [false, false, false, false];
+let keyFlash = [0, 0, 0, 0]; 
+
+let score = 0, combo = 0, health = 50; 
+let lastTime = 0, songStartTime = 0;
+let audioCtx;
+let nextNoteBeat = 0;
+let currentStageData = null;
+let judgementText = { text: "", timer: 0, color: "" };
+
+// 키보드 이벤트
+window.addEventListener('keydown', (e) => {
+    if (currentState === STATE.TITLE && e.key === 'Enter') {
+        currentState = STATE.FREEPLAY;
+        return;
+    }
+    
+    if (currentState === STATE.FREEPLAY) {
+        if (e.key === 'ArrowUp' || e.key === 'w') {
+            selectedMenuIndex = (selectedMenuIndex - 1 + STAGES.length) % STAGES.length;
+        } else if (e.key === 'ArrowDown' || e.key === 's') {
+            selectedMenuIndex = (selectedMenuIndex + 1) % STAGES.length;
+        } else if (e.key === 'Enter') {
+            startGame(selectedMenuIndex);
+        }
+        return;
+    }
+
+    if ((currentState === STATE.GAMEOVER || currentState === STATE.CLEAR) && e.key === 'Enter') {
+        currentState = STATE.FREEPLAY;
+        return;
+    }
+    
+    if (currentState === STATE.PLAYING) {
+        for (let i = 0; i < 4; i++) {
+            if (KEYS[i].includes(e.key) && !keysDown[i]) {
+                keysDown[i] = true;
+                keyFlash[i] = 0.15; 
+                handleHit(i);
+            }
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    for (let i = 0; i < 4; i++) if (KEYS[i].includes(e.key)) keysDown[i] = false;
+});
+
+function initGame() {
+    document.getElementById('loading').style.display = 'none';
+    canvas.style.display = 'block';
+    lastTime = performance.now();
+    requestAnimationFrame(update);
+}
+
+function startGame(stageIndex) {
+    currentStageData = STAGES[stageIndex];
+    score = 0; combo = 0; health = 50; notes = [];
+    judgementText.timer = 0;
+    
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    
+    songStartTime = audioCtx.currentTime + 1.0;
+    nextNoteBeat = 0;
+    currentState = STATE.PLAYING;
+}
+
+function generateNotes() {
+    if (!currentStageData) return;
+    
+    let bps = currentStageData.bpm / 60; 
+    let secPerBeat = 1 / bps;
+    let lookahead = 2.0;
+    let currentTime = audioCtx.currentTime - songStartTime;
+
+    // 설정된 시간이 지나면 노트 생성을 멈춤
+    if (currentTime > SONG_DURATION) return; 
+
+    while (nextNoteBeat * secPerBeat < currentTime + lookahead) {
+        let beatTime = songStartTime + (nextNoteBeat * secPerBeat);
+        
+        if (nextNoteBeat % 4 === 0) {
+            playBeep(beatTime, currentStageData.freq / 2, 'sine', 0.15);
+        } else {
+            let pitchOffset = (nextNoteBeat % 3) * 50; 
+            playBeep(beatTime, currentStageData.freq + pitchOffset, currentStageData.synthType, 0.1);
+        }
+
+        if (Math.random() < currentStageData.density) {
+            let lane = Math.floor(Math.random() * 4);
+            notes.push({ lane: lane, time: beatTime, active: true, y: 0 });
+            
+            if (currentStageData.id === 3 && Math.random() < 0.3) {
+                let lane2 = (lane + 1 + Math.floor(Math.random()*2)) % 4;
+                notes.push({ lane: lane2, time: beatTime, active: true, y: 0 });
+            }
+        }
+        nextNoteBeat++;
+    }
+}
+
+function playBeep(time, freq, type, duration) {
+    let osc = audioCtx.createOscillator();
+    let gain = audioCtx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    
+    gain.gain.setValueAtTime(0.08, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+    
+    osc.start(time); osc.stop(time + duration);
+}
+
+function handleHit(lane) {
+    let hitTime = audioCtx.currentTime;
+    let closest = null;
+    let minDiff = 0.15; 
+
+    for (let i = 0; i < notes.length; i++) {
+        if (notes[i].active && notes[i].lane === lane) {
+            let diff = Math.abs(notes[i].time - hitTime);
+            if (diff < minDiff) { minDiff = diff; closest = notes[i]; }
+        }
+    }
+
+    if (closest) {
+        closest.active = false;
+        let diff = minDiff;
+        if (diff < 0.05) { score += 350; combo++; health += 2; showJudgement("SICK!!", "#00FFFF"); }
+        else if (diff < 0.1) { score += 100; combo++; health += 1; showJudgement("GOOD!", "#00FF00"); }
+        else { score += 50; combo = 0; health -= 1; showJudgement("BAD", "#FF0000"); }
+    } else {
+        combo = 0; health -= 2; showJudgement("MISS", "#AA0000");
+    }
+    health = Math.min(100, Math.max(0, health));
+}
+
+function showJudgement(text, color) {
+    judgementText = { text, color, timer: 0.5 };
+}
+
+function update(time) {
+    let dt = (time - lastTime) / 1000;
+    lastTime = time;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (currentState === STATE.TITLE) {
+        ctx.fillStyle = '#FFF'; ctx.textAlign = 'center';
+        ctx.font = '40px "Press Start 2P"';
+        ctx.fillText("GSHS NIGHT PUMPKIN", canvas.width/2, 250);
+        
+        if (Math.floor(time / 500) % 2 === 0) {
+            ctx.font = '20px "Press Start 2P"';
+            ctx.fillStyle = '#0FF';
+            ctx.fillText("PRESS [ENTER] TO START", canvas.width/2, 400);
+        }
+        ctx.drawImage(ASSETS.player, 350, 450, 200, 200);
+
+    } else if (currentState === STATE.FREEPLAY) {
+        ctx.fillStyle = '#222'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = '#FF00FF'; ctx.textAlign = 'left';
+        ctx.font = '40px "Press Start 2P"';
+        ctx.fillText("FREE PLAY", 50, 80);
+        ctx.fillStyle = '#FFF'; ctx.font = '15px "Press Start 2P"';
+        ctx.fillText("USE [UP/DOWN] TO SELECT, [ENTER] TO PLAY", 50, 120);
+
+        for (let i = 0; i < STAGES.length; i++) {
+            let y = 250 + i * 100;
+            let bestScore = highScores[STAGES[i].id];
+
+            if (i === selectedMenuIndex) {
+                ctx.fillStyle = '#333';
+                ctx.fillRect(40, y - 50, 500, 85);
+                ctx.fillStyle = '#00FFFF';
+                ctx.font = '24px "Press Start 2P"';
+                ctx.fillText("▶ " + STAGES[i].title, 60, y);
+                ctx.fillStyle = '#FFF'; ctx.font = '12px "Press Start 2P"';
+                ctx.fillText(`BPM: ${STAGES[i].bpm} | BEST: ${bestScore}`, 60, y + 25);
+            } else {
+                ctx.fillStyle = '#888';
+                ctx.font = '20px "Press Start 2P"';
+                ctx.fillText("  " + STAGES[i].title, 60, y);
+                ctx.fillStyle = '#666'; ctx.font = '10px "Press Start 2P"';
+                ctx.fillText(`BEST: ${bestScore}`, 90, y + 20);
+            }
+        }
+
+        let selectedBossImg = ASSETS[STAGES[selectedMenuIndex].boss];
+        let bounce = Math.abs(Math.sin(time / 200)) * 10;
+        ctx.drawImage(selectedBossImg, 600, 200 + bounce, 250, 250);
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
+        ctx.beginPath(); ctx.ellipse(725, 470, 100, 20, 0, 0, Math.PI*2); ctx.fill();
+
+    } else if (currentState === STATE.PLAYING) {
+        generateNotes();
+        let currentTime = audioCtx.currentTime;
+        let timePlayed = currentTime - songStartTime;
+
+        if (health <= 0) {
+            saveHighScore(currentStageData.id, score);
+            currentState = STATE.GAMEOVER;
+            notes = [];
+        } else if (timePlayed > SONG_DURATION + 2 && notes.length === 0) {
+            // 곡이 끝나고(30초) 남은 노트가 없으면 클리어
+            saveHighScore(currentStageData.id, score);
+            currentState = STATE.CLEAR;
+        }
+
+        let bps = currentStageData.bpm / 60;
+        let bounce = Math.abs(Math.sin(currentTime * Math.PI * bps)) * 15;
+
+        let currentBossImg = ASSETS[currentStageData.boss];
+        ctx.drawImage(currentBossImg, 150, 350 + bounce, 200, 200); 
+        
+        let px = 550, py = 350 - bounce;
+        if (keysDown[0]) px -= 10; if (keysDown[1]) py += 10;
+        if (keysDown[2]) py -= 10; if (keysDown[3]) px += 10;
+        ctx.drawImage(ASSETS.player, px, py, 200, 200);
+
+        const dirs = ['left', 'down', 'up', 'right'];
+        for (let i = 0; i < 4; i++) {
+            let x = START_X + i * LANE_W;
+            if (keyFlash[i] > 0) {
+                keyFlash[i] -= dt;
+                ctx.drawImage(ASSETS.arrows[dirs[i] + 'Hit'], x, TARGET_Y, 80, 80);
+            } else {
+                ctx.drawImage(ASSETS.arrows[dirs[i]], x, TARGET_Y, 80, 80);
+            }
+        }
+
+        for (let i = notes.length - 1; i >= 0; i--) {
+            let n = notes[i];
+            let timeDiff = n.time - currentTime;
+            n.y = TARGET_Y + timeDiff * currentStageData.speed; 
+
+            if (n.y < -100) { 
+                if (n.active) { n.active = false; combo = 0; health -= 4; showJudgement("MISS", "#AA0000"); }
+                notes.splice(i, 1);
+                continue;
+            }
+
+            if (n.active) {
+                ctx.drawImage(ASSETS.arrows[dirs[n.lane] + 'Hit'], START_X + n.lane * LANE_W, n.y, 80, 80);
+            }
+        }
+
+        let barW = 500, barH = 20, barX = canvas.width/2 - barW/2, barY = 600;
+        ctx.fillStyle = '#000'; ctx.fillRect(barX-4, barY-4, barW+8, barH+8); 
+        ctx.fillStyle = '#FF0000'; ctx.fillRect(barX, barY, barW, barH); 
+        ctx.fillStyle = '#00FF00'; ctx.fillRect(barX + (barW - (health/100)*barW), barY, (health/100)*barW, barH); 
+        
+        ctx.fillStyle = '#FFF'; ctx.textAlign = 'center';
+        ctx.font = '16px "Press Start 2P"';
+        // 시간 진행도 표시
+        let timeRemains = Math.max(0, Math.ceil(SONG_DURATION - timePlayed));
+        ctx.fillText(`SONG: ${currentStageData.title} | TIME: ${timeRemains}s`, canvas.width/2, 40);
+        ctx.fillText(`SCORE: ${score} | COMBO: ${combo}`, canvas.width/2, 580);
+
+        if (judgementText.timer > 0) {
+            judgementText.timer -= dt;
+            ctx.fillStyle = judgementText.color;
+            ctx.font = '30px "Press Start 2P"';
+            ctx.fillText(judgementText.text, canvas.width/2, 300 - (0.5 - judgementText.timer)*50); 
+        }
+
+    } else if (currentState === STATE.GAMEOVER) {
+        ctx.fillStyle = 'rgba(255,0,0,0.5)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = '#FFF'; ctx.textAlign = 'center';
+        ctx.font = '50px "Press Start 2P"'; ctx.fillText("GAME OVER", canvas.width/2, 250);
+        
+        ctx.font = '20px "Press Start 2P"';
+        ctx.fillText(`SCORE: ${score}`, canvas.width/2, 320);
+
+        ctx.drawImage(ASSETS.bossSkeleton, canvas.width/2 - 75, 400, 150, 150);
+
+        if (Math.floor(time / 500) % 2 === 0) {
+            ctx.fillText("PRESS [ENTER] TO RETURN TO MENU", canvas.width/2, 380);
+        }
+
+    } else if (currentState === STATE.CLEAR) {
+        // --- 5. 클리어 화면 ---
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.3)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = '#FFF'; ctx.textAlign = 'center';
+        ctx.font = '50px "Press Start 2P"'; ctx.fillText("STAGE CLEAR!", canvas.width/2, 250);
+        
+        ctx.font = '25px "Press Start 2P"';
+        ctx.fillStyle = '#FF0';
+        ctx.fillText(`FINAL SCORE: ${score}`, canvas.width/2, 330);
+
+        ctx.drawImage(ASSETS.player, canvas.width/2 - 100, 400, 200, 200);
+
+        if (Math.floor(time / 500) % 2 === 0) {
+            ctx.fillStyle = '#FFF';
+            ctx.font = '20px "Press Start 2P"';
+            ctx.fillText("PRESS [ENTER] TO CONTINUE", canvas.width/2, 390);
+        }
+    }
+
+    requestAnimationFrame(update);
+}
+</script>
+</body>
+</html>
