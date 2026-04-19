@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BLOCK RACER : MEGA TRACK</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            font-family: 'Share Tech Mono', monospace;
+            background-color: #000;
+            color: #fff;
+            user-select: none;
+        }
+
+        /* 둥근 모서리 절대 금지 및 엣지 강조 스타일 */
+        .sharp-box {
+            border: 2px solid #fff;
+            border-radius: 0 !important;
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+        }
+
+        .sharp-btn {
+            border: 2px solid #fff;
+            border-radius: 0 !important;
+            background-color: #000;
+            color: #fff;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: all 0.1s linear;
+            cursor: pointer;
+        }
+
+        .sharp-btn:hover {
+            background-color: #fff;
+            color: #000;
+        }
+
+        .sharp-btn:active {
+            transform: translate(2px, 2px);
+        }
+
+        .sharp-input {
+            border: 2px solid #555;
+            border-radius: 0 !important;
+            background-color: #111;
+            color: #00ff00;
+            outline: none;
+        }
+
+        .sharp-input:focus {
+            border-color: #fff;
+        }
+
+        #game-canvas {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pointer-events-auto { pointer-events: auto; }
+
+        .data-panel {
+            border-left: 4px solid #fff;
+            padding-left: 10px;
+        }
+        
+        .lap-time-flash {
+            animation: flash 1s forwards;
+        }
+
+        @keyframes flash {
+            0% { opacity: 1; transform: scale(1.5); color: #00ff00; }
+            80% { opacity: 1; transform: scale(1); color: #fff; }
+            100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="ui-layer">
+        
+        <!-- 메인 화면 -->
+        <div id="screen-main" class="pointer-events-auto flex-1 flex flex-col items-center justify-center bg-black/90">
+            <h1 class="text-6xl font-bold mb-2 tracking-widest border-b-4 border-white pb-2">BLOCK RACER</h1>
+            <p class="text-sm text-gray-400 mb-12 tracking-widest">MEGA TRACK EDITION</p>
+            
+            <div class="sharp-box p-8 flex flex-col gap-6 w-96">
+                <div class="flex flex-col gap-2">
+                    <label class="text-xs text-gray-400">NICKNAME</label>
+                    <input type="text" id="input-nickname" class="sharp-input p-3 text-lg w-full" placeholder="PLAYER1" value="RACER">
+                </div>
+
+                <div class="flex flex-col gap-4 mt-4 border-t border-gray-700 pt-6">
+                    <button id="btn-practice" class="sharp-btn p-4 w-full">연습하기 (SINGLE)</button>
+                    
+                    <button id="btn-create-room" class="sharp-btn p-4 w-full border-green-500 text-green-500 hover:bg-green-500">방 만들기 (HOST)</button>
+                    
+                    <div class="flex gap-2 w-full mt-2">
+                        <input type="text" id="input-room-code" class="sharp-input p-4 w-full text-center uppercase text-xl" placeholder="CODE" maxlength="5">
+                        <button id="btn-join-room" class="sharp-btn p-4 w-2/3 border-blue-500 text-blue-500 hover:bg-blue-500">참여하기</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 로비 / 대기 화면 -->
+        <div id="screen-lobby" class="pointer-events-auto flex-1 flex flex-col items-center justify-center bg-black/90 hidden">
+            <div class="sharp-box p-12 text-center w-[32rem]">
+                <h2 class="text-3xl font-bold mb-4">대기 중...</h2>
+                <div class="mb-8 p-6 border-2 border-dashed border-gray-500">
+                    <p class="text-sm text-gray-400 mb-2">방 코드</p>
+                    <p id="display-room-code" class="text-5xl font-bold text-yellow-400 tracking-widest">---</p>
+                </div>
+                <p id="lobby-status" class="text-lg animate-pulse text-green-400">상대방의 연결을 기다리는 중...</p>
+                <button id="btn-cancel-lobby" class="sharp-btn p-3 px-8 mt-8 border-red-500 text-red-500 hover:bg-red-500">취소</button>
+            </div>
+        </div>
+
+        <!-- 게임 내 HUD -->
+        <div id="screen-hud" class="flex-1 flex flex-col justify-between p-6 hidden relative">
+            
+            <!-- [추가] 우측 상단 미니맵 캔버스 -->
+            <canvas id="minimap" width="160" height="160" class="sharp-box" style="position: absolute; top: 20px; right: 20px; z-index: 50;"></canvas>
+
+            <div class="flex justify-between items-start">
+                <div class="sharp-box p-4 flex gap-8">
+                    <div class="data-panel">
+                        <p class="text-xs text-gray-400">LAP</p>
+                        <p class="text-3xl font-bold"><span id="hud-lap">1</span> <span class="text-lg text-gray-500">/ 3</span></p>
+                    </div>
+                    <div class="data-panel">
+                        <p class="text-xs text-gray-400">SPEED</p>
+                        <p class="text-3xl font-bold"><span id="hud-speed">000</span> <span class="text-lg text-gray-500">KM/H</span></p>
+                    </div>
+                    <div class="data-panel hidden md:block">
+                        <p class="text-xs text-gray-400">PLAYER</p>
+                        <p id="hud-name" class="text-xl font-bold text-green-400">NAME</p>
+                    </div>
+                </div>
+
+                <button id="btn-exit-game" class="pointer-events-auto sharp-btn py-2 px-4 text-sm border-red-500 text-red-500 hover:bg-red-500 hidden" style="margin-right: 180px;">나가기</button>
+            </div>
+
+            <div class="flex justify-center items-center flex-1">
+                <h1 id="hud-center-msg" class="text-9xl font-bold text-white drop-shadow-[0_0_10px_rgba(255,255,255,1)] hidden">3</h1>
+            </div>
+
+            <div class="flex justify-center">
+                <h2 id="hud-lap-time" class="text-5xl font-bold opacity-0 absolute bottom-32">00:00.00</h2>
+            </div>
+            
+            <div class="flex justify-between items-end">
+                <div class="text-xs text-gray-500 sharp-box p-3">
+                    [W] 전진 | [S] 후진<br>
+                    [A][D] 좌우 스티어링 (살짝만 눌러도 드리프트 발동)
+                </div>
+            </div>
+        </div>
+
+        <!-- 결과 화면 -->
+        <div id="screen-result" class="pointer-events-auto flex-1 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+            <div class="sharp-box p-16 text-center border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.3)]">
+                <h2 class="text-sm text-yellow-500 tracking-widest mb-2">RACE FINISHED</h2>
+                <h1 id="result-winner" class="text-5xl font-bold mb-12 uppercase text-white">OOO 승리!</h1>
+                <button id="btn-go-home" class="sharp-btn p-5 px-12 text-xl w-full border-white hover:bg-white hover:text-black">홈으로 가기</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const APP_PREFIX = 'kr-tiny-mega-'; 
+        const STATE = {
+            mode: 'menu',
+            role: null,
+            nickname: '',
+            peer: null,
+            conn: null,
+            roomCode: '',
+            game: {
+                status: 'waiting', 
+                lap: 1,
+                maxLaps: 3,
+                lastTrackIndex: 0,
+                currentCheckpoint: 1, 
+                lastLapTime: 0,
+                startTime: 0,
+            },
+            opponents: {}
+        };
+
+        const screens = {
+            main: document.getElementById('screen-main'),
+            lobby: document.getElementById('screen-lobby'),
+            hud: document.getElementById('screen-hud'),
+            result: document.getElementById('screen-result')
+        };
+
+        const showScreen = (screenName) => {
+            Object.values(screens).forEach(s => s.classList.add('hidden'));
+            if(screens[screenName]) screens[screenName].classList.remove('hidden');
+        };
+
+        let scene, camera, renderer;
+        let carGroup, carBody, wheelGroups = [];
+        let remoteCars = {};
+        
+        const TRACK_POINTS = 400;
+        const TRACK_WIDTH = 45;
+        let trackCenters = []; 
+        let skidmarks = [];
+        let skidIndex = 0;
+        let skidMaterial;
+
+        // [수정] 직선 속도 및 가속도 대폭 상향
+        const CAR = {
+            speed: 0,
+            maxSpeed: 5.0,          // (기존 2.2 -> 5.0) 
+            acceleration: 0.1,      // (기존 0.035 -> 0.1) 
+            friction: 0.985,
+            braking: 0.12,          
+            turnSpeed: 0.0,
+            maxTurnSpeed: 0.045,     
+            turnAcceleration: 0.0035, 
+            rotation: 0, 
+            position: { x: 0, z: 0 },
+        };
+
+        const keys = { w: false, s: false, a: false, d: false };
+
+        function init3D() {
+            const canvas = document.getElementById('game-canvas');
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x87CEEB); 
+            renderer.shadowMap.enabled = true;
+
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x87CEEB, 0.0015);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(100, 300, 100);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -500;
+            dirLight.shadow.camera.right = 500;
+            dirLight.shadow.camera.top = 500;
+            dirLight.shadow.camera.bottom = -500;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            createEnvironment();
+            createCar(true);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if(keys.hasOwnProperty(k)) keys[k] = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if(keys.hasOwnProperty(k)) keys[k] = false;
+            });
+
+            animate();
+        }
+
+        function createEnvironment() {
+            const groundGeo = new THREE.PlaneGeometry(3000, 3000, 1, 1);
+            const groundMat = new THREE.MeshLambertMaterial({ color: 0x225522 });
+            const groundPlane = new THREE.Mesh(groundGeo, groundMat);
+            groundPlane.rotation.x = -Math.PI / 2;
+            groundPlane.receiveShadow = true;
+            scene.add(groundPlane);
+
+            const controlPoints = [
+                new THREE.Vector3(0, 0, 300),
+                new THREE.Vector3(300, 0, 400),
+                new THREE.Vector3(600, 0, 100),
+                new THREE.Vector3(450, 0, -200),
+                new THREE.Vector3(600, 0, -500),
+                new THREE.Vector3(150, 0, -600),
+                new THREE.Vector3(-150, 0, -300),
+                new THREE.Vector3(-450, 0, -450),
+                new THREE.Vector3(-600, 0, 0),
+                new THREE.Vector3(-300, 0, 250),
+            ];
+            const curve = new THREE.CatmullRomCurve3(controlPoints, true); 
+
+            const lefts = [];
+            const rights = [];
+            trackCenters = [];
+
+            const trackGeo = new THREE.BufferGeometry();
+            const vertices = [];
+            const indices = [];
+
+            for(let i=0; i<=TRACK_POINTS; i++) {
+                let t = i / TRACK_POINTS;
+                let pt = curve.getPointAt(t);
+                let tan = curve.getTangentAt(t).normalize();
+                let normal = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+
+                let leftPt = new THREE.Vector3().copy(pt).add(normal.clone().multiplyScalar(TRACK_WIDTH/2));
+                let rightPt = new THREE.Vector3().copy(pt).add(normal.clone().multiplyScalar(-TRACK_WIDTH/2));
+
+                lefts.push(leftPt);
+                rights.push(rightPt);
+                trackCenters.push(pt);
+
+                vertices.push(leftPt.x, 0.2, leftPt.z);
+                vertices.push(rightPt.x, 0.2, rightPt.z);
+            }
+
+            for(let i=0; i<TRACK_POINTS; i++) {
+                let l1 = i * 2;
+                let r1 = i * 2 + 1;
+                let l2 = (i + 1) * 2;
+                let r2 = (i + 1) * 2 + 1;
+                indices.push(l1, r1, l2);
+                indices.push(r1, r2, l2);
+            }
+
+            trackGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            trackGeo.setIndex(indices);
+            trackGeo.computeVertexNormals();
+
+            const trackMat = new THREE.MeshLambertMaterial({ color: 0x333333, side: THREE.DoubleSide });
+            const trackMesh = new THREE.Mesh(trackGeo, trackMat);
+            trackMesh.receiveShadow = true;
+            scene.add(trackMesh);
+
+            for(let i=0; i<TRACK_POINTS; i++) {
+                let color = Math.floor(i / 5) % 2 === 0 ? 0xff0000 : 0xffffff;
+                let wallMat = new THREE.MeshLambertMaterial({color: color});
+                
+                let p1 = lefts[i], p2 = lefts[(i+1)%TRACK_POINTS];
+                let distL = p1.distanceTo(p2);
+                let meshL = new THREE.Mesh(new THREE.BoxGeometry(2, 6, distL + 0.1), wallMat);
+                meshL.position.copy(p1).lerp(p2, 0.5);
+                meshL.position.y = 3;
+                meshL.lookAt(p2);
+                meshL.castShadow = true;
+                scene.add(meshL);
+
+                let p3 = rights[i], p4 = rights[(i+1)%TRACK_POINTS];
+                let distR = p3.distanceTo(p4);
+                let meshR = new THREE.Mesh(new THREE.BoxGeometry(2, 6, distR + 0.1), wallMat);
+                meshR.position.copy(p3).lerp(p4, 0.5);
+                meshR.position.y = 3;
+                meshR.lookAt(p4);
+                meshR.castShadow = true;
+                scene.add(meshR);
+            }
+
+            skidMaterial = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.8, depthWrite: false });
+            for(let i=0; i<400; i++) {
+                const markGeo = new THREE.PlaneGeometry(1.2, 1.2);
+                const mark = new THREE.Mesh(markGeo, skidMaterial);
+                mark.rotation.x = -Math.PI / 2;
+                mark.position.set(0, -100, 0); 
+                scene.add(mark);
+                skidmarks.push(mark);
+            }
+        }
+
+        function createCar(isLocal, color = 0x33ff33, remoteId = null) {
+            const group = new THREE.Group();
+            const bodyGeo = new THREE.BoxGeometry(2.2, 1, 4.5);
+            const bodyMat = new THREE.MeshLambertMaterial({ color: color });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1;
+            body.castShadow = true;
+            group.add(body);
+
+            const cockpitGeo = new THREE.BoxGeometry(1.6, 0.8, 2);
+            const cockpitMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+            const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
+            cockpit.position.set(0, 1.9, -0.5);
+            cockpit.castShadow = true;
+            group.add(cockpit);
+
+            const wheelGeo = new THREE.BoxGeometry(0.6, 1, 1);
+            const wheelMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+            const positions = [[-1.2, 0.5, 1.4], [1.2, 0.5, 1.4], [-1.2, 0.5, -1.4], [1.2, 0.5, -1.4]];
+            const wheels = [];
+            positions.forEach(pos => {
+                const w = new THREE.Mesh(wheelGeo, wheelMat);
+                w.position.set(...pos);
+                w.castShadow = true;
+                group.add(w);
+                wheels.push(w);
+            });
+
+            scene.add(group);
+            if (isLocal) {
+                carGroup = group;
+                carBody = body;
+                wheelGroups = wheels;
+                resetCarPosition();
+            } else {
+                remoteCars[remoteId] = { group, wheels };
+            }
+            return group;
+        }
+
+        function resetCarPosition() {
+            if(!carGroup || trackCenters.length === 0) return;
+            let p0 = trackCenters[0], p1 = trackCenters[1];
+            CAR.position.x = p0.x; CAR.position.z = p0.z;
+            CAR.rotation = Math.atan2(p1.x - p0.x, p1.z - p0.z); 
+            CAR.speed = 0; CAR.turnSpeed = 0;
+            carGroup.position.set(CAR.position.x, 0, CAR.position.z);
+            carGroup.rotation.y = CAR.rotation;
+            STATE.game.lastTrackIndex = 0;
+            STATE.game.currentCheckpoint = 1;
+        }
+
+        function spawnSkidmark(carMesh) {
+            const m1 = skidmarks[skidIndex];
+            const rearLeft = new THREE.Vector3(-1.2, 0.25, -1.5).applyMatrix4(carMesh.matrixWorld);
+            m1.position.copy(rearLeft);
+            m1.rotation.y = carMesh.rotation.y;
+            skidIndex = (skidIndex + 1) % skidmarks.length;
+
+            const m2 = skidmarks[skidIndex];
+            const rearRight = new THREE.Vector3(1.2, 0.25, -1.5).applyMatrix4(carMesh.matrixWorld);
+            m2.position.copy(rearRight);
+            m2.rotation.y = carMesh.rotation.y;
+            skidIndex = (skidIndex + 1) % skidmarks.length;
+        }
+
+        function checkCollision() {
+            let p = new THREE.Vector3(CAR.position.x, 0, CAR.position.z);
+            let minDist = Infinity, closestPt = null, closestIndex = STATE.game.lastTrackIndex;
+            let searchWindow = 20;
+            for (let offset = -searchWindow; offset <= searchWindow; offset++) {
+                let i = (STATE.game.lastTrackIndex + offset + TRACK_POINTS) % TRACK_POINTS;
+                let A = trackCenters[i], B = trackCenters[(i+1)%TRACK_POINTS];
+                let AB = new THREE.Vector3().subVectors(B, A);
+                let AP = new THREE.Vector3().subVectors(p, A);
+                let t = Math.max(0, Math.min(1, (AP.x*AB.x + AP.z*AB.z) / (AB.x*AB.x + AB.z*AB.z)));
+                let C = new THREE.Vector3(A.x + AB.x*t, 0, A.z + AB.z*t);
+                let dist = p.distanceTo(C);
+                if (dist < minDist) { minDist = dist; closestPt = C; closestIndex = i; }
+            }
+            STATE.game.lastTrackIndex = closestIndex;
+            let limit = (TRACK_WIDTH / 2) - 1.8;
+            if (minDist > limit) {
+                let normal = new THREE.Vector3().subVectors(p, closestPt).normalize();
+                CAR.position.x -= normal.x * (minDist - limit) * 1.5;
+                CAR.position.z -= normal.z * (minDist - limit) * 1.5;
+                CAR.speed *= 0.7;
+            }
+            const COLLISION_RADIUS = 3.5;
+            for (let id in STATE.opponents) {
+                let opp = STATE.opponents[id];
+                let dx = CAR.position.x - opp.x, dz = CAR.position.z - opp.z;
+                let dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < COLLISION_RADIUS && dist > 0.1) {
+                    CAR.position.x += (dx/dist) * (COLLISION_RADIUS-dist) * 0.5;
+                    CAR.position.z += (dz/dist) * (COLLISION_RADIUS-dist) * 0.5;
+                    CAR.speed *= 0.85; 
+                }
+            }
+        }
+
+        function updatePhysics() {
+            if (STATE.game.status !== 'playing') {
+                if (carGroup) {
+                    carGroup.position.set(CAR.position.x, 0, CAR.position.z);
+                    carGroup.rotation.y = CAR.rotation;
+                }
+                return;
+            }
+            if (keys.w) CAR.speed += CAR.acceleration;
+            if (keys.s) CAR.speed -= CAR.braking;
+            CAR.speed *= CAR.friction;
+            if (CAR.speed > CAR.maxSpeed) CAR.speed = CAR.maxSpeed;
+            if (CAR.speed < -CAR.maxSpeed/2) CAR.speed = -CAR.maxSpeed/2;
+
+            const speedRatio = Math.abs(CAR.speed) / CAR.maxSpeed;
+            if (speedRatio > 0.05) {
+                if (keys.a) CAR.turnSpeed += CAR.turnAcceleration;
+                else if (keys.d) CAR.turnSpeed -= CAR.turnAcceleration;
+                else CAR.turnSpeed *= 0.8; 
+            } else { CAR.turnSpeed *= 0.8; }
+            CAR.turnSpeed = Math.max(-CAR.maxTurnSpeed, Math.min(CAR.maxTurnSpeed, CAR.turnSpeed));
+            CAR.rotation += CAR.turnSpeed * speedRatio * (CAR.speed >= 0 ? 1 : -1);
+            CAR.position.x += Math.sin(CAR.rotation) * CAR.speed;
+            CAR.position.z += Math.cos(CAR.rotation) * CAR.speed;
+
+            checkCollision();
+            checkCheckpoints();
+
+            carGroup.position.set(CAR.position.x, 0, CAR.position.z);
+            carGroup.rotation.y = CAR.rotation;
+            wheelGroups[0].rotation.y = wheelGroups[1].rotation.y = CAR.turnSpeed * 10;
+            if (speedRatio > 0.4 && Math.abs(CAR.turnSpeed) > CAR.maxTurnSpeed * 0.3) spawnSkidmark(carGroup);
+
+            document.getElementById('hud-speed').innerText = Math.floor(Math.abs(CAR.speed) * 80).toString().padStart(3, '0');
+
+            if (STATE.mode === 'multiplayer' && STATE.conn && STATE.conn.open) {
+                STATE.conn.send({
+                    type: 'pos', x: CAR.position.x, z: CAR.position.z, rot: CAR.rotation,
+                    speedRatio: speedRatio, turnSpeed: CAR.turnSpeed
+                });
+            }
+        }
+
+        // [추가] 미니맵 렌더링 함수
+        function drawMinimap() {
+            const minimap = document.getElementById('minimap');
+            if (!minimap || STATE.game.status === 'waiting' || trackCenters.length === 0) return;
+            const ctx = minimap.getContext('2d');
+            ctx.clearRect(0, 0, minimap.width, minimap.height);
+
+            const scale = 0.08; 
+            const centerX = minimap.width / 2;
+            const centerY = minimap.height / 2;
+
+            // 트랙 그리기
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            trackCenters.forEach((pt, i) => {
+                const tx = centerX + pt.x * scale;
+                const ty = centerY + pt.z * scale;
+                if (i === 0) ctx.moveTo(tx, ty);
+                else ctx.lineTo(tx, ty);
+            });
+            ctx.closePath();
+            ctx.stroke();
+
+            // 상대방 점 그리기 (빨간색 점)
+            for (let id in STATE.opponents) {
+                const opp = STATE.opponents[id];
+                if (opp.x !== undefined && opp.z !== undefined) {
+                    ctx.fillStyle = "#ff3333";
+                    ctx.beginPath();
+                    ctx.arc(centerX + opp.x * scale, centerY + opp.z * scale, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // 본인 화살표 그리기 (작은 녹색 화살표)
+            const px = centerX + CAR.position.x * scale;
+            const py = centerY + CAR.position.z * scale;
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.rotate(-CAR.rotation); // 진행방향 회전
+            ctx.fillStyle = "#33ff33";
+            ctx.beginPath();
+            ctx.moveTo(0, -6);
+            ctx.lineTo(4, 5);
+            ctx.lineTo(-4, 5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function checkCheckpoints() {
+            let idx = STATE.game.lastTrackIndex;
+            let currentZone = Math.floor(idx / (TRACK_POINTS / 4));
+            if (currentZone === (STATE.game.currentCheckpoint % 4)) {
+                STATE.game.currentCheckpoint++;
+                if (STATE.game.currentCheckpoint > 1 && STATE.game.currentCheckpoint % 4 === 1) completeLap();
+            }
+        }
+
+        function completeLap() {
+            const seconds = ((Date.now() - STATE.game.startTime) / 1000).toFixed(2);
+            const timeEl = document.getElementById('hud-lap-time');
+            timeEl.innerText = `${seconds}s`;
+            timeEl.classList.remove('lap-time-flash');
+            void timeEl.offsetWidth;
+            timeEl.classList.add('lap-time-flash');
+            STATE.game.startTime = Date.now();
+            STATE.game.lap++;
+            if (STATE.game.lap > STATE.game.maxLaps) {
+                triggerWin(STATE.nickname);
+                if (STATE.conn && STATE.conn.open) STATE.conn.send({ type: 'win', name: STATE.nickname });
+            } else { document.getElementById('hud-lap').innerText = STATE.game.lap; }
+        }
+
+        function triggerWin(winnerName) {
+            STATE.game.status = 'finished';
+            document.getElementById('result-winner').innerText = `${winnerName} 승리!`;
+            showScreen('result');
+        }
+
+        function updateCamera() {
+            if (!carGroup) return;
+            const offset = new THREE.Vector3(0, 15, -25).applyAxisAngle(new THREE.Vector3(0, 1, 0), CAR.rotation);
+            camera.position.lerp(carGroup.position.clone().add(offset), 0.15);
+            camera.lookAt(carGroup.position.x, carGroup.position.y + 2, carGroup.position.z);
+        }
+
+        function updateRemoteCars() {
+            for (let id in remoteCars) {
+                const opp = STATE.opponents[id];
+                if (!opp || opp.targetX === undefined) continue;
+                const rc = remoteCars[id];
+                
+                // [수정] 네트워크 핑/렉 극복 로직: 추측 항법(Dead Reckoning) 적용
+                // 지연 시간 동안 상대가 이동했을 위치를 속도 기반으로 예측
+                opp.targetX += Math.sin(opp.targetRot) * (opp.speedRatio * 5.0) * 0.1;
+                opp.targetZ += Math.cos(opp.targetRot) * (opp.speedRatio * 5.0) * 0.1;
+
+                // 예측된 위치로 부드럽게 이동 (보간)
+                opp.x += (opp.targetX - opp.x) * 0.25;
+                opp.z += (opp.targetZ - opp.z) * 0.25;
+
+                rc.group.position.x = opp.x;
+                rc.group.position.z = opp.z;
+                
+                let diff = opp.targetRot - rc.group.rotation.y;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                rc.group.rotation.y += diff * 0.25;
+                
+                rc.wheels[0].rotation.y = rc.wheels[1].rotation.y = opp.turnSpeed * 10;
+                if (opp.speedRatio > 0.4 && Math.abs(opp.turnSpeed) > 0.01) spawnSkidmark(rc.group);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            updateCamera();
+            updateRemoteCars();
+            drawMinimap(); // [추가] 매 프레임 미니맵 업데이트
+            renderer.render(scene, camera);
+        }
+
+        function startCountdown() {
+            showScreen('hud');
+            resetCarPosition();
+            if (STATE.mode === 'practice') document.getElementById('btn-exit-game').classList.remove('hidden');
+            const centerMsg = document.getElementById('hud-center-msg');
+            centerMsg.classList.remove('hidden');
+            STATE.game.status = 'countdown';
+            let count = 3; centerMsg.innerText = count;
+            const intv = setInterval(() => {
+                count--;
+                if (count > 0) centerMsg.innerText = count;
+                else if (count === 0) { centerMsg.innerText = "GO!"; centerMsg.style.color = "#00ff00"; }
+                else {
+                    clearInterval(intv);
+                    centerMsg.classList.add('hidden');
+                    centerMsg.style.color = "#ffffff";
+                    STATE.game.status = 'playing';
+                    STATE.game.startTime = Date.now();
+                }
+            }, 1000);
+        }
+
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let result = '';
+            for (let i = 0; i < 5; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+            return result;
+        }
+
+        function setupPeerEvents(peer) {
+            peer.on('error', (err) => {
+                if (err.type === 'peer-unavailable') alert('방을 찾을 수 없습니다.');
+                cleanupNetwork(); showScreen('main');
+            });
+        }
+
+        function setupConnectionEvents(conn) {
+            const handleConnectionOpen = () => {
+                document.getElementById('lobby-status').innerText = "연결 완료!";
+                STATE.conn = conn;
+                conn.send({ type: 'init', name: STATE.nickname });
+                setTimeout(startCountdown, 1000);
+            };
+            if (conn.open) handleConnectionOpen();
+            else conn.on('open', handleConnectionOpen);
+
+            conn.on('data', (data) => {
+                if (data.type === 'init') {
+                    if (!remoteCars[conn.peer]) {
+                        createCar(false, 0xff3333, conn.peer);
+                        STATE.opponents[conn.peer] = { x: 0, z: 0, rot: 0, targetX: 0, targetZ: 0, targetRot: 0, speedRatio: 0, turnSpeed: 0 };
+                    }
+                } else if (data.type === 'pos') {
+                    if (STATE.opponents[conn.peer]) {
+                        const opp = STATE.opponents[conn.peer];
+                        
+                        // [수정] 핑차이 극복을 위한 네트워크 최적화
+                        // 바로 덮어씌우지 않고 목표 지점으로 설정하여 부드럽게 보간(Dead Reckoning)
+                        opp.targetX = data.x;
+                        opp.targetZ = data.z;
+                        opp.targetRot = data.rot;
+                        opp.speedRatio = data.speedRatio;
+                        opp.turnSpeed = data.turnSpeed;
+
+                        // 초반 핑차이나 심한 렉으로 인해 실제 위치와 목표 위치 차이가 심하면 즉시 순간이동(텔레포트) 방어 로직
+                        const dx = opp.targetX - opp.x;
+                        const dz = opp.targetZ - opp.z;
+                        if (Math.sqrt(dx*dx + dz*dz) > 30) {
+                            opp.x = opp.targetX;
+                            opp.z = opp.targetZ;
+                            opp.rot = opp.targetRot;
+                        }
+                    }
+                } else if (data.type === 'win') triggerWin(data.name);
+            });
+            conn.on('close', () => { alert('상대방과 연결이 끊어졌습니다.'); cleanupNetwork(); showScreen('main'); });
+        }
+
+        function cleanupNetwork() {
+            if (STATE.conn) { STATE.conn.close(); STATE.conn = null; }
+            if (STATE.peer) { STATE.peer.destroy(); STATE.peer = null; }
+            for (let id in remoteCars) scene.remove(remoteCars[id].group);
+            remoteCars = {}; STATE.opponents = {};
+        }
+
+        window.onload = () => {
+            init3D();
+            document.getElementById('input-nickname').addEventListener('change', (e) => {
+                STATE.nickname = e.target.value || 'RACER';
+                document.getElementById('hud-name').innerText = STATE.nickname;
+            });
+            STATE.nickname = document.getElementById('input-nickname').value || 'RACER';
+
+            document.getElementById('btn-practice').addEventListener('click', () => {
+                STATE.mode = 'practice'; cleanupNetwork(); startCountdown();
+            });
+
+            document.getElementById('btn-create-room').addEventListener('click', () => {
+                STATE.mode = 'multiplayer'; STATE.role = 'host'; STATE.roomCode = generateRoomCode();
+                showScreen('lobby');
+                document.getElementById('display-room-code').innerText = "생성 중...";
+                STATE.peer = new Peer(APP_PREFIX + STATE.roomCode, {
+                    config: {
+                        'iceServers': [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' }
+                        ]
+                    }
+                });
+                setupPeerEvents(STATE.peer);
+                STATE.peer.on('open', () => {
+                    document.getElementById('display-room-code').innerText = STATE.roomCode;
+                    document.getElementById('lobby-status').innerText = "상대방 대기 중...";
+                });
+                STATE.peer.on('connection', setupConnectionEvents);
+            });
+
+            document.getElementById('btn-join-room').addEventListener('click', () => {
+                const code = document.getElementById('input-room-code').value.toUpperCase();
+                if (code.length !== 5) return;
+                STATE.mode = 'multiplayer'; STATE.role = 'guest'; STATE.roomCode = code;
+                showScreen('lobby');
+                document.getElementById('display-room-code').innerText = STATE.roomCode;
+                STATE.peer = new Peer({
+                    config: {
+                        'iceServers': [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' }
+                        ]
+                    }
+                });
+                setupPeerEvents(STATE.peer);
+
+                STATE.peer.on('open', (id) => {
+                    console.log('Guest Peer ID:', id);
+                    document.getElementById('lobby-status').innerText = "방장과 연결 중...";
+                    const hostPeerId = APP_PREFIX + STATE.roomCode;
+                    // [패치] reliable: true 옵션으로 신뢰도 보장
+                    const conn = STATE.peer.connect(hostPeerId, { reliable: true });
+                    setupConnectionEvents(conn);
+                });
+            });
+
+            document.getElementById('btn-cancel-lobby').addEventListener('click', () => {
+                cleanupNetwork();
+                showScreen('main');
+            });
+
+            document.getElementById('btn-exit-game').addEventListener('click', () => {
+                STATE.game.status = 'waiting';
+                showScreen('main');
+            });
+
+            document.getElementById('btn-go-home').addEventListener('click', () => {
+                cleanupNetwork();
+                STATE.game.status = 'waiting';
+                showScreen('main');
+            });
+        };
+
+    </script>
+</body>
+</html>
