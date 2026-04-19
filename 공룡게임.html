@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D 크롬 공룡 게임</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f7f7f7;
+            font-family: 'Press Start 2P', 'Courier New', Courier, monospace;
+            touch-action: none;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        .score-board {
+            text-align: right;
+            font-size: 20px;
+            color: #535353;
+            letter-spacing: 2px;
+            z-index: 10;
+        }
+
+        #current-score {
+            margin-left: 20px;
+        }
+
+        .center-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #535353;
+            z-index: 20;
+        }
+
+        #game-over-screen, #start-screen {
+            display: none;
+        }
+
+        .game-over-text {
+            font-size: 30px;
+            margin-bottom: 20px;
+            letter-spacing: 4px;
+        }
+
+        .restart-icon {
+            font-size: 40px;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        .blink {
+            animation: blinker 1s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            line-height: 1.5;
+            left: 0;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .controls-hint { display: block; }
+            .score-board { font-size: 14px; }
+            .game-over-text { font-size: 20px; }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <div class="score-board">
+            <span id="high-score">HI 00000</span>
+            <span id="current-score">00000</span>
+        </div>
+        
+        <div id="start-screen" class="center-screen">
+            <div class="blink">스페이스바를 눌러 시작하세요</div>
+        </div>
+
+        <div id="game-over-screen" class="center-screen">
+            <div class="game-over-text">G A M E  O V E R</div>
+            <div class="restart-icon" onclick="resetGame()">↻</div>
+        </div>
+        
+        <div class="controls-hint">
+            ← → 스와이프: 차선 변경<br>
+            ↑ 스와이프 또는 화면 터치: 점프<br>
+            ↓ 스와이프: 숙이기
+        </div>
+    </div>
+</div>
+
+<script>
+    // 게임 전역 변수
+    let scene, camera, renderer;
+    let dino, groundLines = [], particles = [];
+    let obstacles = [];
+    
+    // 게임 상태 변수
+    let isPlaying = false;
+    let isGameOver = false;
+    let score = 0;
+    let highScore = 0;
+    let gameSpeed = 1.0;
+    let baseSpeed = 1.0;
+    let distanceTraveled = 0;
+    let obstacleSpawnTimer = 0;
+
+    // 플레이어 물리 및 위치 변수
+    const LANE_WIDTH = 14;
+    let currentLane = 1;
+    let targetX = 0;
+    let velocityY = 0;
+    
+    // 점프 물리
+    const gravity = 0.5;      
+    const jumpPower = 5.25;   
+    let isJumping = false;
+    let isDucking = false;
+    const groundY = 0;
+
+    // 상수 (색상 등)
+    const COLOR_MAIN = 0x535353; 
+    const COLOR_DINO = 0x4CAF50; 
+    const COLOR_DINO_DARK = 0x388E3C; 
+    const COLOR_BG = 0xf7f7f7;   
+
+    const scoreEl = document.getElementById('current-score');
+    const highScoreEl = document.getElementById('high-score');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+
+    window.onload = function() {
+        initThreeJS();
+        createEnvironment();
+        setupControls();
+        startScreen.style.display = 'block';
+        animate();
+    };
+
+    function initThreeJS() {
+        const container = document.getElementById('game-container');
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(COLOR_BG);
+        scene.fog = new THREE.Fog(COLOR_BG, 50, 250);
+
+        camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 400);
+        camera.position.set(0, 22, -40);
+        camera.lookAt(0, 5, 50);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        window.addEventListener('resize', onWindowResize, false);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function createEnvironment() {
+        const material = new THREE.MeshBasicMaterial({ color: COLOR_DINO });
+        const darkMaterial = new THREE.MeshBasicMaterial({ color: COLOR_DINO_DARK });
+
+        dino = new THREE.Group();
+        
+        const body = new THREE.Mesh(new THREE.BoxGeometry(4.5, 6, 7), material);
+        body.position.set(0, 6, 0);
+        dino.add(body);
+        
+        const head = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 7.5), material);
+        head.position.set(0, 10.5, 3);
+        dino.add(head);
+        
+        const snout = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 5), material);
+        snout.position.set(0, 9.5, 8);
+        dino.add(snout);
+
+        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const eye = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.8, 0.8), eyeMat);
+        eye.position.set(0, 11.5, 4.5);
+        dino.add(eye);
+
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(5, 1.2, 2.5), material);
+        arm.position.set(0, 7.5, 4.5);
+        dino.add(arm);
+
+        for(let i=0; i<5; i++) {
+            const spine = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), darkMaterial);
+            spine.position.set(0, 10 - i*1.2, 0.5 - i*1.8);
+            dino.add(spine);
+        }
+        
+        const tail = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3.5, 6), material);
+        tail.position.set(0, 4.5, -5);
+        tail.rotation.x = -0.2;
+        dino.add(tail);
+        dino.tail = tail; 
+        
+        const legL = new THREE.Mesh(new THREE.BoxGeometry(1.8, 3, 1.8), material);
+        legL.position.set(-1.5, 1.5, 0);
+        dino.add(legL);
+        const legR = new THREE.Mesh(new THREE.BoxGeometry(1.8, 3, 1.8), material);
+        legR.position.set(1.5, 1.5, 0);
+        dino.add(legR);
+
+        dino.legL = legL;
+        dino.legR = legR;
+        dino.hitbox = { w: 5, h: 13, d: 10 };
+        scene.add(dino);
+
+        const ground = new THREE.Mesh(
+            new THREE.BoxGeometry(100, 0.5, 400),
+            new THREE.MeshBasicMaterial({ color: COLOR_MAIN })
+        );
+        ground.position.set(0, -0.25, 150);
+        scene.add(ground);
+
+        for (let i = 0; i < 40; i++) {
+            createGroundParticle();
+        }
+    }
+
+    function createGroundParticle() {
+        const material = new THREE.MeshBasicMaterial({ color: COLOR_MAIN });
+        const w = Math.random() > 0.5 ? 2 : 0.5;
+        const d = Math.random() > 0.5 ? Math.random() * 5 + 1 : 1;
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, d), material);
+        resetParticlePosition(mesh);
+        mesh.position.z = Math.random() * 250 - 20; 
+        scene.add(mesh);
+        particles.push(mesh);
+    }
+
+    function resetParticlePosition(mesh) {
+        mesh.position.x = (Math.random() - 0.5) * 70;
+        mesh.position.y = 0.1;
+        mesh.position.z = 250 + Math.random() * 100;
+    }
+
+    function getLaneX(lane) {
+        return -(lane - 1) * LANE_WIDTH;
+    }
+
+    function spawnObstacle() {
+        const material = new THREE.MeshBasicMaterial({ color: COLOR_MAIN });
+        const group = new THREE.Group();
+        const lane = Math.floor(Math.random() * 3);
+        const isBird = score > 50 && Math.random() < 0.3;
+
+        if (isBird) {
+            const birdBody = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 6), material);
+            group.add(birdBody);
+            const birdHead = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4), material);
+            birdHead.position.set(0, 0, 4);
+            group.add(birdHead);
+            const wingL = new THREE.Mesh(new THREE.BoxGeometry(6, 0.8, 3), material);
+            wingL.position.set(-4.5, 0, 0);
+            group.add(wingL);
+            const wingR = new THREE.Mesh(new THREE.BoxGeometry(6, 0.8, 3), material);
+            wingR.position.set(4.5, 0, 0);
+            group.add(wingR);
+            group.position.y = 9; 
+            group.hitbox = { w: 10, h: 4, d: 6 };
+            group.isBird = true;
+            group.wingDir = 1;
+            group.wingL = wingL;
+            group.wingR = wingR;
+        } else {
+            const sizeType = Math.floor(Math.random() * 3) + 1;
+            let h = sizeType === 1 ? 8 : 12; 
+            let w = sizeType === 3 ? 10 : 4;
+            const trunk = new THREE.Mesh(new THREE.BoxGeometry(3, h, 3), material);
+            trunk.position.set(0, h/2, 0);
+            group.add(trunk);
+            if (sizeType >= 2) {
+                const armL = new THREE.Mesh(new THREE.BoxGeometry(2, h*0.4, 2), material);
+                armL.position.set(-3, h*0.5, 0);
+                group.add(armL);
+                const branchL = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 2), material);
+                branchL.position.set(-2, h*0.3, 0);
+                group.add(branchL);
+                const armR = new THREE.Mesh(new THREE.BoxGeometry(2, h*0.5, 2), material);
+                armR.position.set(3, h*0.6, 0);
+                group.add(armR);
+                const branchR = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 2), material);
+                branchR.position.set(2, h*0.4, 0);
+                group.add(branchR);
+            }
+            if (sizeType === 3) {
+                const extraTrunk = new THREE.Mesh(new THREE.BoxGeometry(3, h*0.8, 3), material);
+                extraTrunk.position.set(-4, (h*0.8)/2, 2);
+                group.add(extraTrunk);
+            }
+            group.position.y = 0;
+            group.hitbox = { w: w, h: h, d: 4 };
+        }
+        group.position.x = getLaneX(lane);
+        group.position.z = 250;
+        group.lane = lane;
+        scene.add(group);
+        obstacles.push(group);
+    }
+
+    function setDucking(duck) {
+        if (duck && !isJumping) {
+            isDucking = true;
+            dino.scale.set(1, 0.45, 1.3);
+            dino.hitbox.h = 6;
+        } else if (!duck) {
+            isDucking = false;
+            dino.scale.set(1, 1, 1);
+            dino.hitbox.h = 13;
+        }
+    }
+
+    function setupControls() {
+        document.addEventListener('keydown', (e) => {
+            if (!isPlaying && !isGameOver && (e.code === 'Space' || e.code === 'ArrowUp')) {
+                startGame();
+                return;
+            }
+            if (isGameOver && (e.code === 'Space' || e.code === 'Enter')) {
+                resetGame();
+                return;
+            }
+            if (!isPlaying) return;
+            if (e.code === 'ArrowLeft') moveLeft();
+            else if (e.code === 'ArrowRight') moveRight();
+            else if ((e.code === 'Space' || e.code === 'ArrowUp') && !isJumping) jump();
+            else if (e.code === 'ArrowDown') setDucking(true);
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowDown') setDucking(false);
+        });
+
+        let touchStartX = 0, touchStartY = 0;
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, { passive: false });
+        document.addEventListener('touchend', (e) => {
+            if (!isPlaying && !isGameOver) { startGame(); return; }
+            if (isGameOver) return;
+            if (!isPlaying) return;
+            let deltaX = e.changedTouches[0].screenX - touchStartX;
+            let deltaY = e.changedTouches[0].screenY - touchStartY;
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                if (Math.abs(deltaX) > 30) {
+                    if (deltaX > 0) moveRight(); else moveLeft();
+                }
+            } else {
+                if (deltaY < -30) { if (!isJumping) jump(); }
+                else if (deltaY > 30) { setDucking(true); setTimeout(() => setDucking(false), 800); }
+                else if (Math.abs(deltaY) < 10 && Math.abs(deltaX) < 10) { if (!isJumping) jump(); }
+            }
+        }, { passive: false });
+    }
+
+    function moveLeft() {
+        currentLane = Math.max(0, currentLane - 1);
+        targetX = getLaneX(currentLane);
+    }
+
+    function moveRight() {
+        currentLane = Math.min(2, currentLane + 1);
+        targetX = getLaneX(currentLane);
+    }
+
+    function jump() {
+        if (isDucking) setDucking(false);
+        isJumping = true;
+        velocityY = jumpPower;
+    }
+
+    function startGame() {
+        isPlaying = true;
+        isGameOver = false;
+        startScreen.style.display = 'none';
+        score = 0;
+        gameSpeed = baseSpeed;
+        distanceTraveled = 0;
+        updateScoreDisplay();
+    }
+
+    function resetGame() {
+        obstacles.forEach(obs => scene.remove(obs));
+        obstacles = [];
+        currentLane = 1;
+        targetX = 0;
+        dino.position.x = 0;
+        dino.position.y = groundY;
+        isJumping = false;
+        velocityY = 0;
+        gameOverScreen.style.display = 'none';
+        startGame();
+    }
+
+    function gameOver() {
+        isPlaying = false;
+        isGameOver = true;
+        gameOverScreen.style.display = 'block';
+        if (score > highScore) highScore = score;
+        updateScoreDisplay();
+    }
+
+    function formatNumber(num) { return num.toString().padStart(5, '0'); }
+
+    function updateScoreDisplay() {
+        scoreEl.innerText = formatNumber(Math.floor(score));
+        highScoreEl.innerText = "HI " + formatNumber(Math.floor(highScore));
+    }
+
+    function checkCollisions() {
+        for (let i = 0; i < obstacles.length; i++) {
+            const obs = obstacles[i];
+            const zDistance = Math.abs(dino.position.z - obs.position.z);
+            if (zDistance < 7) {
+                const xDistance = Math.abs(dino.position.x - obs.position.x);
+                if (xDistance < (dino.hitbox.w/2 + obs.hitbox.w/2 - 1.5)) {
+                    const dinoMinY = dino.position.y;
+                    const dinoMaxY = dino.position.y + dino.hitbox.h;
+                    let obsMinY = obs.isBird ? obs.position.y - obs.hitbox.h / 2 : obs.position.y;
+                    let obsMaxY = obs.isBird ? obs.position.y + obs.hitbox.h / 2 : obs.position.y + obs.hitbox.h;
+                    
+                    if (dinoMinY < obsMaxY - 1.5 && dinoMaxY > obsMinY + 1.5) {
+                        gameOver();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        if (isPlaying) {
+            dino.position.x += (targetX - dino.position.x) * 0.25;
+
+            if (isJumping || dino.position.y > groundY) {
+                dino.position.y += velocityY;
+                velocityY -= gravity;
+                if (dino.position.y <= groundY) {
+                    dino.position.y = groundY;
+                    isJumping = false;
+                    velocityY = 0;
+                }
+            }
+
+            const time = Date.now() * 0.01;
+            if (!isJumping && !isDucking) {
+                dino.legL.position.y = 1.5 + Math.sin(time * 3) * 0.8;
+                dino.legR.position.y = 1.5 + Math.cos(time * 3) * 0.8;
+                dino.tail.rotation.y = Math.sin(time * 1.5) * 0.3; 
+            } else {
+                dino.legL.position.y = 2.5;
+                dino.legR.position.y = 2.5;
+                dino.tail.rotation.y = 0;
+            }
+
+            // 장애물 생성 간격 조정: 점수가 높을수록 생성 타이머 임계값을 낮춰 더 자주 나오게 함
+            const spawnThreshold = Math.max(30, (80 + Math.random() * 50) - (score / 15));
+            obstacleSpawnTimer += gameSpeed;
+            if (obstacleSpawnTimer > spawnThreshold) {
+                spawnObstacle();
+                // 매우 높은 점수에서는 가끔 장애물이 동시에 두 개가 나오도록 추가 생성 확률 부여
+                if (score > 300 && Math.random() < Math.min(0.4, score / 2000)) {
+                    spawnObstacle();
+                }
+                obstacleSpawnTimer = 0;
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.position.z -= gameSpeed * 1.8;
+                if (obs.isBird) {
+                    obs.wingL.position.y += obs.wingDir * 0.3 * gameSpeed;
+                    obs.wingR.position.y += obs.wingDir * 0.3 * gameSpeed;
+                    if (obs.wingL.position.y > 1.8 || obs.wingL.position.y < -1.8) obs.wingDir *= -1;
+                }
+                if (obs.position.z < -30) {
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            particles.forEach(p => {
+                p.position.z -= gameSpeed * 1.8;
+                if (p.position.z < -30) resetParticlePosition(p);
+            });
+
+            checkCollisions();
+
+            distanceTraveled += gameSpeed;
+            if (distanceTraveled % 10 < gameSpeed) {
+                score += 1;
+                updateScoreDisplay();
+                // 100점마다 속도 증가폭을 기존 0.15에서 0.2로 상향 및 최대 속도 제한 완화
+                if (score % 100 === 0 && gameSpeed < 6.0) gameSpeed += 0.2;
+            }
+        }
+
+        renderer.render(scene, camera);
+    }
+</script>
+</body>
+</html>
