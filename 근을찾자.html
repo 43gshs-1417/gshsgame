@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cinematic Math Root Visualizer</title>
+    
+    <!-- KaTeX CSS for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #020205; color: white; font-family: 'Helvetica Neue', sans-serif; user-select: none; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s ease; gap: 20px; }
+        
+        /* Input Field */
+        .input-container { position: relative; width: 80%; max-width: 600px; display: flex; gap: 15px; }
+        #math-input { flex: 1; background: transparent; border: none; border-bottom: 2px solid rgba(255, 255, 255, 0.4); color: #fff; font-size: 2.5rem; font-weight: 300; text-align: center; padding: 10px; outline: none; transition: all 0.3s ease; letter-spacing: 2px; }
+        #math-input:focus { border-bottom-color: #00ffcc; box-shadow: 0 10px 20px -10px rgba(0, 255, 204, 0.5); }
+        #math-input::placeholder { color: rgba(255, 255, 255, 0.15); font-size: 1.5rem; }
+        .btn-input { background: transparent; border: 1px solid rgba(0, 255, 204, 0.5); color: #00ffcc; padding: 0 30px; font-size: 1.2rem; cursor: pointer; transition: 0.3s ease; letter-spacing: 2px; outline: none; white-space: nowrap; }
+        .btn-input:hover { background: rgba(0, 255, 204, 0.2); box-shadow: 0 0 15px rgba(0, 255, 204, 0.5); }
+
+        /* Calculator Keypad */
+        .keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 80%; max-width: 600px; background: rgba(5, 10, 15, 0.6); padding: 20px; border-radius: 8px; border: 1px solid rgba(0, 255, 204, 0.1); backdrop-filter: blur(10px); }
+        .keypad button { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 1.2rem; padding: 12px 0; border-radius: 4px; cursor: pointer; transition: 0.2s ease; outline: none; }
+        .keypad button:hover { background: rgba(0, 255, 204, 0.2); border-color: #00ffcc; color: #00ffcc; box-shadow: 0 0 10px rgba(0, 255, 204, 0.3); }
+        .keypad .action-btn { color: #ff0066; background: rgba(255, 0, 102, 0.05); }
+        .keypad .action-btn:hover { background: rgba(255, 0, 102, 0.2); border-color: #ff0066; color: #ff0066; box-shadow: 0 0 10px rgba(255, 0, 102, 0.3); }
+        .keypad .var-btn { color: #00ffcc; font-style: italic; font-weight: bold; }
+
+        /* Back Button */
+        #btn-back { position: absolute; top: 30px; left: 30px; background: rgba(5, 10, 15, 0.8); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 12px 24px; font-size: 0.9rem; cursor: pointer; opacity: 0; pointer-events: none; transition: 0.5s; z-index: 20; letter-spacing: 2px; backdrop-filter: blur(8px); text-transform: uppercase; }
+        #btn-back:hover { border-color: #00ffcc; color: #00ffcc; box-shadow: 0 0 10px rgba(0, 255, 204, 0.3); }
+        
+        .overlay-vignette { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.95) 100%); z-index: 2; pointer-events: none; }
+        
+        /* LaTeX Equation Display */
+        #current-eq { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); font-size: 2.5rem; color: #fff; z-index: 10; opacity: 0; transition: opacity 1s ease; text-shadow: 0 0 20px rgba(255,255,255,0.8); pointer-events: none; }
+        #current-eq .katex-display { margin: 0; } /* Override default KaTeX margin */
+
+        /* Root Panel UI */
+        #root-panel { position: absolute; top: 30px; right: 30px; background: rgba(5, 10, 15, 0.85); border-left: 3px solid #00ffcc; padding: 15px 20px; min-width: 140px; opacity: 0; transition: opacity 0.5s; z-index: 15; backdrop-filter: blur(10px); pointer-events: none; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .panel-title { font-size: 0.65rem; color: #00ffcc; letter-spacing: 2px; margin-bottom: 8px; border-bottom: 1px solid rgba(0,255,204,0.3); padding-bottom: 4px; font-weight: bold; }
+        .root-item { font-family: monospace; font-size: 1.2rem; color: #fff; margin-bottom: 6px; text-shadow: 0 0 10px rgba(255,255,255,0.6); }
+        .root-item.complex { color: #ff0066; text-shadow: 0 0 10px rgba(255,0,102,0.6); }
+    </style>
+
+    <!-- Import Libraries -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+</head>
+<body>
+    <div class="overlay-vignette"></div>
+    <div id="canvas-container"></div>
+    
+    <div id="current-eq"></div>
+    <button id="btn-back">< BACK</button>
+
+    <div id="root-panel">
+        <div class="panel-title">ROOTS DETECTED</div>
+        <div id="root-list"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div style="color: #00ffcc; font-size: 1rem; letter-spacing: 8px; text-transform: uppercase; opacity: 0.8; font-weight: 300;">Equation Solver</div>
+        
+        <div class="input-container">
+            <input type="text" id="math-input" placeholder="e.g. x^3 - 1 = 0" autocomplete="off">
+            <button class="btn-input" id="btn-submit">ENTER</button>
+        </div>
+
+        <!-- Virtual Keypad -->
+        <div class="keypad" id="keypad">
+            <button data-val="7">7</button> <button data-val="8">8</button> <button data-val="9">9</button> <button data-val="/">/</button> <button data-val="C" class="action-btn">C</button>
+            <button data-val="4">4</button> <button data-val="5">5</button> <button data-val="6">6</button> <button data-val="*">*</button> <button data-val="DEL" class="action-btn">⌫</button>
+            <button data-val="1">1</button> <button data-val="2">2</button> <button data-val="3">3</button> <button data-val="-">-</button> <button data-val="^">^</button>
+            <button data-val="0">0</button> <button data-val=".">.</button> <button data-val="=">=</button> <button data-val="+">+</button> <button data-val="x" class="var-btn">x</button>
+            <button data-val="sin(">sin</button> <button data-val="cos(">cos</button> <button data-val="(">(</button> <button data-val=")">)</button> <button data-val="pi">π</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Core ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 40);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.4, 0.1));
+
+        let gridGroup = new THREE.Group(), graphGroup = new THREE.Group(), rootGroup = new THREE.Group();
+        scene.add(gridGroup, graphGroup, rootGroup);
+        const clock = new THREE.Clock();
+        let updatables = [], controls = null, isSimulating = false;
+        let screenShake = 0;
+
+        // --- UI Interactions ---
+        const inputField = document.getElementById('math-input');
+        
+        // Keypad Logic
+        document.querySelectorAll('.keypad button').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const val = e.target.getAttribute('data-val');
+                if (val === 'C') {
+                    inputField.value = '';
+                } else if (val === 'DEL') {
+                    inputField.value = inputField.value.slice(0, -1);
+                } else {
+                    const start = inputField.selectionStart;
+                    const end = inputField.selectionEnd;
+                    inputField.value = inputField.value.substring(0, start) + val + inputField.value.substring(end);
+                    inputField.focus();
+                    // Move cursor
+                    const newPos = start + val.length;
+                    inputField.setSelectionRange(newPos, newPos);
+                }
+            });
+        });
+
+        document.getElementById('btn-submit').onclick = () => {
+            if (inputField.value.trim() !== '') startSimulation(inputField.value);
+        };
+        inputField.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && inputField.value.trim() !== '') startSimulation(inputField.value);
+        });
+
+        document.getElementById('btn-back').onclick = resetSimulation;
+
+        function resetSimulation() {
+            isSimulating = false;
+            document.getElementById('ui-layer').style.opacity = '1';
+            document.getElementById('ui-layer').style.pointerEvents = 'auto';
+            document.getElementById('current-eq').style.opacity = '0';
+            document.getElementById('root-panel').style.opacity = '0';
+            document.getElementById('btn-back').style.opacity = '0';
+            document.getElementById('btn-back').style.pointerEvents = 'none';
+            document.getElementById('root-list').innerHTML = '';
+            
+            const msg = document.getElementById('complex-msg');
+            if(msg) msg.remove();
+
+            screenShake = 0;
+            if (controls) controls.dispose();
+            controls = null;
+            
+            gridGroup.clear();
+            graphGroup.clear();
+            rootGroup.clear();
+            updatables = [];
+            camera.position.set(0, 0, 40);
+            camera.lookAt(0,0,0);
+            inputField.focus();
+        }
+
+        // --- Utils ---
+        function safeEvaluate(compiled, scope) {
+            try {
+                let val = compiled.evaluate(scope);
+                let res = math.abs(val);
+                if (!isFinite(res) || isNaN(res)) return 0;
+                return val;
+            } catch(e) { return 0; }
+        }
+
+        function triggerRootHit(pos, valText, isComplex = false) {
+            screenShake = 1.2;
+            const color = isComplex ? 0xff0066 : 0x00ffcc;
+            
+            const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 5 }));
+            sphere.position.copy(pos);
+            rootGroup.add(sphere);
+
+            const light = new THREE.PointLight(color, 8, 20);
+            light.position.copy(pos);
+            rootGroup.add(light);
+            
+            updatables.push((t) => { sphere.scale.setScalar(1 + Math.sin(t * 10) * 0.15); });
+
+            const item = document.createElement('div');
+            item.className = 'root-item' + (isComplex ? ' complex' : '');
+            item.innerText = `x = ${valText}`;
+            document.getElementById('root-list').appendChild(item);
+            document.getElementById('root-panel').style.opacity = '1';
+        }
+
+        // --- Logic ---
+        function startSimulation(rawEq) {
+            isSimulating = true;
+            document.getElementById('ui-layer').style.opacity = '0';
+            document.getElementById('ui-layer').style.pointerEvents = 'none';
+            document.getElementById('btn-back').style.opacity = '1';
+            document.getElementById('btn-back').style.pointerEvents = 'auto';
+            
+            // Render LaTeX using KaTeX
+            const eqDisplay = document.getElementById('current-eq');
+            try {
+                let latexStr = "";
+                if (rawEq.includes('=')) {
+                    latexStr = rawEq.split('=').map(p => math.parse(p).toTex()).join(' = ');
+                } else {
+                    latexStr = math.parse(rawEq).toTex() + " = 0";
+                }
+                katex.render(latexStr, eqDisplay, { throwOnError: false, displayMode: true });
+            } catch (e) {
+                // Fallback to normal text if parsing fails
+                eqDisplay.innerText = rawEq.toUpperCase();
+            }
+            eqDisplay.style.opacity = '1';
+
+            const eq = rawEq.toLowerCase().replace(/\s/g, '');
+            const funcStr = eq.includes('=') ? `${eq.split('=')[0]} - (${eq.split('=')[1]})` : eq;
+            const compiled = math.compile(funcStr);
+
+            // Grid setup
+            gridGroup.add(new THREE.GridHelper(40, 40, 0x223344, 0x111122).rotateX(Math.PI/2));
+            const axisMat = new THREE.LineBasicMaterial({ color: 0x88aacc, linewidth: 2 });
+            gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-20,0,0), new THREE.Vector3(20,0,0)]), axisMat.clone()));
+            gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-20,0), new THREE.Vector3(0,20,0)]), axisMat.clone()));
+            let zAxis = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,-20), new THREE.Vector3(0,0,20)]), axisMat.clone());
+            zAxis.material.transparent = true; zAxis.material.opacity = 0;
+            gridGroup.add(zAxis);
+
+            // 1. Find Real Roots
+            const realRoots = [];
+            let prevY = null;
+            const pts = [];
+            for(let x = -20; x <= 20; x += 0.05) {
+                let yVal = safeEvaluate(compiled, {x: x});
+                let y = typeof yVal === 'number' ? yVal : yVal.re;
+                if(prevY !== null && Math.sign(y) !== Math.sign(prevY)) {
+                    realRoots.push({re: x - 0.025, im: 0});
+                }
+                pts.push(new THREE.Vector3(x, THREE.MathUtils.clamp(y, -25, 25), 0));
+                prevY = y;
+            }
+
+            // 2. Find Complex Roots
+            const complexRoots = [];
+            for(let i=0; i<50; i++) {
+                let z = math.complex(Math.random()*10-5, Math.random()*10-5);
+                for(let j=0; j<20; j++) {
+                    let fz = safeEvaluate(compiled, {x: z});
+                    if(math.abs(fz) < 1e-4) {
+                        if(Math.abs(z.im) > 0.01 && !complexRoots.some(r => math.distance([r.re, r.im], [z.re, z.im]) < 0.1)) {
+                            complexRoots.push(z);
+                        }
+                        break;
+                    }
+                    let df = math.divide(math.subtract(safeEvaluate(compiled, {x: math.add(z, 1e-6)}), fz), 1e-6);
+                    if(math.abs(df) < 1e-10) break;
+                    z = math.subtract(z, math.divide(fz, df));
+                    if(math.abs(z) > 50) break;
+                }
+            }
+
+            // 3. Draw & Cinematic Phases
+            const curve = new THREE.CatmullRomCurve3(pts);
+            const geo = new THREE.TubeGeometry(curve, pts.length, 0.15, 8, false);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.5 });
+            const tube = new THREE.Mesh(geo, mat);
+            tube.geometry.setDrawRange(0, 0);
+            graphGroup.add(tube);
+
+            const spark = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 3 }));
+            graphGroup.add(spark);
+
+            let progress = 0, phase = 0, timer = 0;
+            
+            updatables.push((t, dt) => {
+                if(phase === 0) { // Phase 0: Draw Real Graph
+                    progress += dt * 0.35;
+                    tube.geometry.setDrawRange(0, Math.floor(progress * geo.index.count));
+                    
+                    let tipPos = curve.getPointAt(Math.min(1, progress));
+                    spark.position.copy(tipPos);
+
+                    realRoots.forEach((r, idx) => {
+                        if(progress * 40 - 20 >= r.re) {
+                            triggerRootHit(new THREE.Vector3(r.re, 0, 0), Math.abs(r.re) < 0.001 ? "0" : r.re.toFixed(3));
+                            realRoots.splice(idx, 1);
+                        }
+                    });
+
+                    if(!controls) {
+                        camera.position.lerp(new THREE.Vector3(tipPos.x * 0.2, tipPos.y * 0.2, 40), 0.05);
+                        camera.lookAt(0,0,0);
+                    }
+
+                    if(progress >= 1) { 
+                        spark.visible = false;
+                        phase = 1; 
+                        timer = 0; 
+                    }
+                } else if (phase === 1) { // Phase 1: Show Warning if Complex Roots exist
+                    timer += dt;
+                    if (timer > 1.0) {
+                        if (complexRoots.length > 0) {
+                            const msg = document.createElement('div');
+                            msg.id = 'complex-msg';
+                            msg.innerHTML = 'COMPLEX ROOTS DETECTED<br><span style="font-size:0.6em; color:#88aacc">MAPPING COMPLEX MAGNITUDE...</span>';
+                            msg.style.position = 'absolute'; msg.style.bottom = '15%'; msg.style.left = '50%'; msg.style.transform = 'translateX(-50%)';
+                            msg.style.color = '#ff0066'; msg.style.letterSpacing = '6px'; msg.style.fontWeight = 'bold'; msg.style.fontSize = '1.5rem';
+                            msg.style.textAlign = 'center'; msg.style.zIndex = '100'; msg.style.textShadow = '0 0 15px rgba(255,0,102,0.8)';
+                            document.body.appendChild(msg);
+
+                            tube.material.transparent = true;
+                            tube.material.opacity = 0.2; // Dim real line
+                            
+                            phase = 1.5;
+                            timer = 0;
+                        } else {
+                            controls = new OrbitControls(camera, renderer.domElement);
+                            controls.autoRotate = true;
+                            phase = 99; // Finished
+                        }
+                    }
+                } else if(phase === 1.5) { // Phase 1.5: Transition to 3D
+                    timer += dt;
+                    camera.position.lerp(new THREE.Vector3(20, 20, 30), 0.03);
+                    camera.lookAt(0,0,0);
+                    zAxis.material.opacity = Math.min(1, timer * 0.5);
+
+                    if(timer > 2.5) { 
+                        const msg = document.getElementById('complex-msg');
+                        if (msg) msg.remove();
+                        phase = 2; 
+                        timer = 0;
+                    }
+                } else if(phase === 2) { // Phase 2: Surface Growth & Hit Complex
+                    if(!graphGroup.getObjectByName('surface')) {
+                        const sGeo = new THREE.PlaneGeometry(40, 40, 60, 60);
+                        const pos = sGeo.attributes.position.array;
+                        for(let i=0; i<pos.length; i+=3) {
+                            let zVal = safeEvaluate(compiled, {x: math.complex(pos[i], -pos[i+1])});
+                            pos[i+2] = THREE.MathUtils.clamp(math.abs(zVal), 0, 15);
+                        }
+                        sGeo.computeVertexNormals();
+                        const sMesh = new THREE.Mesh(sGeo, new THREE.MeshBasicMaterial({ color: 0xff0066, wireframe: true, transparent: true, opacity: 0 }));
+                        sMesh.name = 'surface'; sMesh.rotation.x = -Math.PI/2; sMesh.scale.set(1, 0.01, 1);
+                        graphGroup.add(sMesh);
+                    }
+                    
+                    const surf = graphGroup.getObjectByName('surface');
+                    timer += dt;
+                    surf.material.opacity = Math.min(0.4, timer * 0.2);
+                    surf.scale.y = Math.min(1.0, timer * 0.5);
+
+                    if (surf.scale.y >= 1.0) {
+                        complexRoots.forEach(r => {
+                            let sign = r.im > 0 ? '+' : '';
+                            triggerRootHit(new THREE.Vector3(r.re, 0, r.im), `${r.re.toFixed(3)}${sign}${r.im.toFixed(3)}i`, true);
+                        });
+                        controls = new OrbitControls(camera, renderer.domElement);
+                        controls.autoRotate = true;
+                        phase = 99;
+                    }
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.1), t = clock.getElapsedTime();
+            updatables.forEach(f => f(t, dt));
+            if(controls) controls.update();
+
+            // Camera Shake Wrapper
+            let sX = 0, sY = 0;
+            if(screenShake > 0) {
+                sX = (Math.random() - 0.5) * screenShake * 0.8;
+                sY = (Math.random() - 0.5) * screenShake * 0.8;
+                camera.position.x += sX; camera.position.y += sY;
+                screenShake -= dt * 8; if(screenShake < 0) screenShake = 0;
+            }
+
+            composer.render();
+
+            if(sX !== 0 || sY !== 0) { camera.position.x -= sX; camera.position.y -= sY; }
+        }
+
+        animate();
+    </script>
+</body>
+</html>
