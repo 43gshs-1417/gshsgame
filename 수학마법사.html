@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>수학의 마법사</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@300;500;700&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #f8f9fa;
+            font-family: 'Noto Sans KR', sans-serif;
+            color: #111;
+        }
+
+        /* 하얀색 림보 스타일의 비네팅 (가장자리가 약간 어두워지는 효과 대신 하얗게 번지는 효과) */
+        #vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle, rgba(255,255,255,0) 40%, rgba(240,240,240,0.8) 100%);
+            z-index: 10;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 24px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            text-shadow: 0 0 10px rgba(255,255,255,0.8);
+        }
+
+        #input-container {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        #typed-input {
+            display: inline-block;
+            font-size: 36px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            color: #111;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 30px;
+            border-radius: 50px;
+            min-width: 60px;
+            min-height: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 2px solid #ddd;
+            transition: transform 0.1s;
+        }
+
+        .shake {
+            animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        /* 화면 덮개 (시작, 게임오버) */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(5px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 30;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+
+        p {
+            font-size: 18px;
+            color: #555;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+            background-color: #111;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Noto Sans KR', sans-serif;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .btn:hover {
+            background-color: #333;
+            transform: translateY(-2px);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="vignette"></div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="hud hidden" id="game-hud">
+            <div>목숨: <span id="lives-display">❤️❤️❤️</span></div>
+            <div>점수: <span id="score-display">0</span> (Lv.<span id="level-display">1</span>)</div>
+        </div>
+        <div id="input-container" class="hidden">
+            <div id="typed-input"></div>
+        </div>
+    </div>
+
+    <div id="start-screen" class="overlay">
+        <h1>수학의 마법사</h1>
+        <p>
+            다가오는 수식 몬스터들의 <b>정답</b>을 숫자로 입력하고<br>
+            <b>Enter</b> 또는 <b>Space</b>를 눌러 처치하세요.<br>
+            <br>
+            <span style="font-size: 14px; background: #eee; padding: 5px 10px; border-radius: 10px;">
+                특수 아이템(폭탄, 체력회복)도 수식을 풀어야 획득할 수 있습니다!
+            </span>
+        </p>
+        <button class="btn" id="start-btn">게임 시작</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1>게임 오버</h1>
+        <p>당신의 최종 점수: <b id="final-score" style="font-size: 28px; color: #111;">0</b></p>
+        <button class="btn" id="restart-btn">다시 하기</button>
+    </div>
+
+<script>
+/**
+ * Game Logic & Rendering
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const UI = {
+    startScreen: document.getElementById('start-screen'),
+    gameOverScreen: document.getElementById('game-over-screen'),
+    hud: document.getElementById('game-hud'),
+    inputContainer: document.getElementById('input-container'),
+    typedInput: document.getElementById('typed-input'),
+    livesDisplay: document.getElementById('lives-display'),
+    scoreDisplay: document.getElementById('score-display'),
+    levelDisplay: document.getElementById('level-display'),
+    finalScore: document.getElementById('final-score'),
+    startBtn: document.getElementById('start-btn'),
+    restartBtn: document.getElementById('restart-btn')
+};
+
+let gameWidth, gameHeight;
+let gameState = 'START'; // START, PLAYING, GAMEOVER
+let currentInput = '';
+
+// Game State
+let score = 0;
+let lives = 3;
+let level = 1;
+let enemies = [];
+let projectiles = [];
+let particles = [];
+let items = [];
+let lastTime = 0;
+let enemySpawnTimer = 0;
+let enemySpawnInterval = 3000; // 초기 스폰 간격
+
+// Player Object
+const player = {
+    x: 0,
+    y: 0,
+    radius: 20,
+    draw: function(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        // 모던 깔끔한 캐릭터 디자인 (그림자 효과)
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 5;
+
+        ctx.fillStyle = '#111';
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 다리
+        ctx.beginPath();
+        ctx.moveTo(0, 10);
+        ctx.lineTo(-10, 35);
+        ctx.moveTo(0, 10);
+        ctx.lineTo(10, 35);
+        ctx.stroke();
+
+        // 몸통
+        ctx.beginPath();
+        ctx.moveTo(0, -15);
+        ctx.lineTo(0, 15);
+        ctx.stroke();
+
+        // 머리
+        ctx.beginPath();
+        ctx.arc(0, -20, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 시그마 모자
+        ctx.font = '22px "JetBrains Mono", serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('Σ', 0, -30);
+
+        // 팔
+        ctx.beginPath();
+        ctx.moveTo(-15, -5);
+        ctx.lineTo(15, -5);
+        ctx.stroke();
+
+        // 인테그랄 마법 지팡이
+        ctx.font = '30px "JetBrains Mono", serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('∫', 25, -15);
+        
+        // 지팡이 끝 빛나는 효과
+        ctx.shadowColor = 'rgba(100, 200, 255, 0.8)';
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(30, -25, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+};
+
+// resize canvas
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gameWidth = canvas.width;
+    gameHeight = canvas.height;
+    player.x = gameWidth / 2;
+    player.y = gameHeight / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// 팩토리얼 계산 함수
+function factorial(n) {
+    if (n <= 1) return 1;
+    let res = 1;
+    for (let i = 2; i <= n; i++) res *= i;
+    return res;
+}
+
+// Math Problem Generator
+function generateMathProblem(stage) {
+    let question, answer;
+
+    if (stage <= 2) {
+        // Lv 1~2: 아주 간단한 덧셈, 뺄셈
+        if (Math.random() < 0.5) {
+            let a = Math.floor(Math.random() * 10) + 1;
+            let b = Math.floor(Math.random() * 10) + 1;
+            question = `${a} + ${b}`;
+            answer = a + b;
+        } else {
+            let a = Math.floor(Math.random() * 10) + 5;
+            let b = Math.floor(Math.random() * a);
+            question = `${a} - ${b}`;
+            answer = a - b;
+        }
+    } else if (stage <= 4) {
+        // Lv 3~4: 덧셈, 뺄셈 (조금 더 큰 수) 및 곱셈, 나눗셈 등장
+        let op = Math.floor(Math.random() * 4);
+        if (op === 0) {
+            let a = Math.floor(Math.random() * 30) + 10;
+            let b = Math.floor(Math.random() * 20) + 10;
+            question = `${a} + ${b}`;
+            answer = a + b;
+        } else if (op === 1) {
+            let a = Math.floor(Math.random() * 30) + 20;
+            let b = Math.floor(Math.random() * a);
+            question = `${a} - ${b}`;
+            answer = a - b;
+        } else if (op === 2) {
+            let a = Math.floor(Math.random() * 8) + 2;
+            let b = Math.floor(Math.random() * 8) + 2;
+            question = `${a} × ${b}`;
+            answer = a * b;
+        } else {
+            let b = Math.floor(Math.random() * 8) + 2;
+            let ans = Math.floor(Math.random() * 8) + 2;
+            let a = b * ans;
+            question = `${a} ÷ ${b}`;
+            answer = ans;
+        }
+    } else if (stage <= 6) {
+        // Lv 5~6: 사칙연산 혼합 및 기본 괄호
+        if (Math.random() < 0.5) {
+            let a = Math.floor(Math.random() * 10) + 1;
+            let b = Math.floor(Math.random() * 5) + 2;
+            let c = Math.floor(Math.random() * 5) + 2;
+            question = `${a} + ${b}×${c}`;
+            answer = a + (b * c);
+        } else {
+            let a = Math.floor(Math.random() * 9) + 1;
+            let b = Math.floor(Math.random() * 9) + 1;
+            let c = Math.floor(Math.random() * 5) + 2;
+            question = `(${a}+${b})×${c}`;
+            answer = (a + b) * c;
+        }
+    } else {
+        // Lv 7+: 진정한 수학의 마법사 모드 (고급 연산 도입)
+        let type = Math.floor(Math.random() * 6); 
+        
+        // 레벨 10 이상이면 훨씬 더 어려운 극악 문제들 출제 확률 추가
+        if (stage >= 10 && Math.random() < 0.4) {
+            type = Math.floor(Math.random() * 4) + 6; // 6, 7, 8, 9
+        }
+
+        switch(type) {
+            case 0: // 팩토리얼 (Factorial)
+                let n = Math.floor(Math.random() * 4) + 3; // 3! ~ 6!
+                question = `${n}!`;
+                answer = factorial(n);
+                break;
+            case 1: // 제곱근 (Square root)
+                let roots = [16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196, 225];
+                let r = roots[Math.floor(Math.random() * (roots.length - (stage >= 10 ? 0 : 4)))];
+                question = `√${r}`;
+                answer = Math.sqrt(r);
+                break;
+            case 2: // 거듭제곱 (Power)
+                const supers = {2: '²', 3: '³', 4: '⁴'};
+                let p1 = Math.floor(Math.random() * 5) + 2; // 2 ~ 6
+                let p2 = Math.floor(Math.random() * 3) + 2; // 2 ~ 4
+                question = `${p1}${supers[p2]}`;
+                answer = Math.pow(p1, p2);
+                break;
+            case 3: // 절댓값 (Absolute Value)
+                let a = Math.floor(Math.random() * 20) + 5;
+                let b = Math.floor(Math.random() * 30) + a + 5; // 무조건 b가 커서 음수 발생
+                question = `|${a} - ${b}|`;
+                answer = Math.abs(a - b);
+                break;
+            case 4: // 모듈러 (나머지 연산)
+                let m1 = Math.floor(Math.random() * 40) + 15;
+                let m2 = Math.floor(Math.random() * 8) + 3;
+                question = `${m1} mod ${m2}`;
+                answer = m1 % m2;
+                break;
+            case 5: // 로그 (Logarithm)
+                const subs = {2: '₂', 3: '₃', 10: '₁₀'};
+                let bases = [2, 3, 10];
+                let base = bases[Math.floor(Math.random() * bases.length)];
+                let exp = Math.floor(Math.random() * 4) + 2; // 2 ~ 5
+                let val = Math.pow(base, exp);
+                question = `log${subs[base]} ${val}`;
+                answer = exp;
+                break;
+            case 6: // [극악] 조합 (Combination nCr)
+                let nC = Math.floor(Math.random() * 4) + 4; // 4 ~ 7
+                let rC = Math.floor(Math.random() * (nC - 1)) + 1; // 1 ~ n-1
+                question = `${nC}C${rC}`;
+                answer = factorial(nC) / (factorial(rC) * factorial(nC - rC));
+                break;
+            case 7: // [극악] 루트와 팩토리얼 혼합
+                let mixR = [4, 9, 16][Math.floor(Math.random() * 3)];
+                question = `(√${mixR})!`;
+                answer = factorial(Math.sqrt(mixR));
+                break;
+            case 8: // [극악] 시그마 연산 (1부터 n까지의 합)
+                let sigN = Math.floor(Math.random() * 5) + 5; // 5 ~ 9
+                question = `Σ(1~${sigN})`;
+                answer = (sigN * (sigN + 1)) / 2;
+                break;
+            case 9: // [극악] 복합 우선순위
+                let x = Math.floor(Math.random() * 5) + 2;
+                let y = Math.floor(Math.random() * 4) + 2;
+                question = `${x}² - ${y}!`;
+                answer = (x * x) - factorial(y);
+                break;
+        }
+    }
+
+    return { question: question, answer: answer.toString() };
+}
+
+// Classes
+class Enemy {
+    constructor() {
+        // 화면 밖에서 스폰
+        const edge = Math.floor(Math.random() * 4);
+        if (edge === 0) { this.x = Math.random() * gameWidth; this.y = -50; } // top
+        else if (edge === 1) { this.x = gameWidth + 50; this.y = Math.random() * gameHeight; } // right
+        else if (edge === 2) { this.x = Math.random() * gameWidth; this.y = gameHeight + 50; } // bottom
+        else { this.x = -50; this.y = Math.random() * gameHeight; } // left
+
+        // 스테이지가 높을수록 여러 목숨(문제)을 가진 적 등장 확률 증가
+        this.maxLives = (level > 4 && Math.random() < 0.2) ? 2 : 1;
+        if (level > 8 && Math.random() < 0.1) this.maxLives = 3;
+        this.currentLives = this.maxLives;
+
+        this.problems = [];
+        for(let i=0; i<this.maxLives; i++) {
+            this.problems.push(generateMathProblem(level + i));
+        }
+
+        this.speed = (0.5 + Math.random() * 0.5) + (level * 0.1);
+        this.radius = 25 + (this.maxLives * 5);
+        this.angle = Math.atan2(player.y - this.y, player.x - this.x);
+        this.wobble = Math.random() * Math.PI * 2;
+    }
+
+    update(dt) {
+        this.angle = Math.atan2(player.y - this.y, player.x - this.x);
+        this.x += Math.cos(this.angle) * this.speed * (dt / 16);
+        this.y += Math.sin(this.angle) * this.speed * (dt / 16);
+        this.wobble += 0.05 * (dt/16);
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y + Math.sin(this.wobble) * 5); // 둥둥 떠다니는 효과
+
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 15;
+
+        // 적 외형 (검은 덩어리)
+        ctx.fillStyle = '#222';
+        ctx.beginPath();
+        if (this.currentLives > 1) {
+            // 목숨이 여러개면 좀 더 뾰족하거나 큰 형태
+            for (let i = 0; i < 6; i++) {
+                let a = (i / 6) * Math.PI * 2;
+                let r = this.radius + (i%2===0 ? 5 : -5);
+                ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+            }
+            ctx.closePath();
+        } else {
+            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        }
+        ctx.fill();
+
+        // 텍스트 (문제)
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 16px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 0;
+        
+        let currentProb = this.problems[this.currentLives - 1];
+        ctx.fillText(currentProb.question, 0, 0);
+
+        // 여러 목숨 표시
+        if (this.maxLives > 1) {
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px sans-serif';
+            ctx.fillText(`(${this.currentLives})`, 0, 18);
+        }
+
+        ctx.restore();
+    }
+}
+
+class Projectile {
+    constructor(target) {
+        this.x = player.x + 30; // 지팡이 끝에서 시작
+        this.y = player.y - 25;
+        this.target = target;
+        this.speed = 15;
+        this.radius = 4;
+        this.history = [];
+    }
+
+    update(dt) {
+        this.history.push({x: this.x, y: this.y});
+        if(this.history.length > 5) this.history.shift();
+
+        const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+        this.x += Math.cos(angle) * this.speed * (dt / 16);
+        this.y += Math.sin(angle) * this.speed * (dt / 16);
+
+        // 충돌 체크
+        const dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
+        if (dist < this.target.radius + this.speed) {
+            return true; // 명중
+        }
+        return false;
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.shadowColor = '#fff';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#333';
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.fill();
+
+        // 꼬리
+        if (this.history.length > 0) {
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            for(let i = this.history.length-1; i>=0; i--) {
+                ctx.lineTo(this.history[i].x, this.history[i].y);
+            }
+            ctx.strokeStyle = 'rgba(50,50,50,0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.radius = Math.random() * 3 + 1;
+        const angle = Math.random() * Math.PI * 2;
+        const velocity = Math.random() * 5 + 2;
+        this.vx = Math.cos(angle) * velocity;
+        this.vy = Math.sin(angle) * velocity;
+        this.alpha = 1;
+        this.decay = Math.random() * 0.02 + 0.02;
+    }
+    update(dt) {
+        this.x += this.vx * (dt/16);
+        this.y += this.vy * (dt/16);
+        this.alpha -= this.decay * (dt/16);
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.alpha);
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+class Item {
+    constructor(type) {
+        this.x = Math.random() * (gameWidth - 100) + 50;
+        this.y = Math.random() * (gameHeight - 100) + 50;
+        this.type = type; // 'BOMB' or 'HEAL'
+        this.radius = 28; // 수식을 표시하기 위해 약간 크게
+        this.timeAlive = 0;
+        this.maxTime = 12000; // 풀 시간을 주기 위해 12초 유지
+        
+        // 아이템은 현재 레벨보다 살짝 쉬운 단계의 문제 출제
+        let prob = generateMathProblem(Math.max(1, level - 1));
+        this.question = prob.question;
+        this.answer = prob.answer;
+
+        if (type === 'BOMB') {
+            this.icon = '💣';
+        } else {
+            this.icon = '❤️';
+        }
+    }
+    update(dt) {
+        this.timeAlive += dt;
+        return this.timeAlive > this.maxTime;
+    }
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        let scale = 1 + Math.sin(this.timeAlive / 150) * 0.1; // 펄스 효과
+        ctx.scale(scale, scale);
+
+        ctx.shadowColor = 'rgba(0,0,0,0.2)';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 0;
+        ctx.fillText(this.icon, 0, -8);
+        
+        ctx.fillStyle = '#111';
+        ctx.font = 'bold 12px "JetBrains Mono", monospace';
+        // 아이템에 부여된 수학 문제 텍스트를 출력
+        ctx.fillText(this.question, 0, 15);
+
+        // 시간 게이지
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius + 5, -Math.PI/2, -Math.PI/2 + (1 - this.timeAlive/this.maxTime) * Math.PI*2);
+        ctx.strokeStyle = '#aaa';
+        ctx.stroke();
+
+        ctx.restore();
+    }
+}
+
+function spawnParticles(x, y, count, color) {
+    for(let i=0; i<count; i++) {
+        particles.push(new Particle(x, y, color));
+    }
+}
+
+function triggerScreenShake() {
+    canvas.style.transform = `translate(${Math.random()*10 - 5}px, ${Math.random()*10 - 5}px)`;
+    setTimeout(() => {
+        canvas.style.transform = 'translate(0, 0)';
+    }, 50);
+}
+
+function updateHUD() {
+    UI.scoreDisplay.innerText = score;
+    UI.levelDisplay.innerText = level;
+    let heartStr = '';
+    for(let i=0; i<lives; i++) heartStr += '❤️';
+    UI.livesDisplay.innerText = heartStr;
+}
+
+// Input Handling
+window.addEventListener('keydown', (e) => {
+    if (gameState !== 'PLAYING') return;
+
+    if (e.key >= '0' && e.key <= '9' || e.key === '-') {
+        if (currentInput.length < 5) {
+            currentInput += e.key;
+            updateInputDisplay();
+        }
+    } else if (e.key === 'Backspace') {
+        currentInput = currentInput.slice(0, -1);
+        updateInputDisplay();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        checkAnswer();
+    }
+});
+
+function updateInputDisplay() {
+    UI.typedInput.innerText = currentInput;
+}
+
+function checkAnswer() {
+    if (!currentInput) return;
+
+    let targetFound = false;
+
+    // 1. 아이템 체크
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].answer === currentInput) {
+            applyItemEffect(items[i].type, items[i].x, items[i].y);
+            items.splice(i, 1);
+            targetFound = true;
+            break;
+        }
+    }
+
+    // 2. 적 체크 (가장 가까운 적 우선)
+    if (!targetFound) {
+        let closestEnemy = null;
+        let closestDist = Infinity;
+
+        enemies.forEach(enemy => {
+            let currentProb = enemy.problems[enemy.currentLives - 1];
+            if (currentProb.answer === currentInput) {
+                let dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closestEnemy = enemy;
+                }
+            }
+        });
+
+        if (closestEnemy) {
+            // 투사체 발사
+            projectiles.push(new Projectile(closestEnemy));
+            targetFound = true;
+        }
+    }
+
+    if (targetFound) {
+        currentInput = '';
+        updateInputDisplay();
+    } else {
+        // 틀렸을 때 이펙트
+        UI.typedInput.classList.remove('shake');
+        void UI.typedInput.offsetWidth; // trigger reflow
+        UI.typedInput.classList.add('shake');
+        currentInput = '';
+        setTimeout(updateInputDisplay, 100);
+    }
+}
+
+function applyItemEffect(type, x, y) {
+    spawnParticles(x, y, 30, '#fff');
+    if (type === 'BOMB') {
+        // 모든 적 처치 (점수는 절반만 획득)
+        enemies.forEach(e => {
+            spawnParticles(e.x, e.y, 20, '#555');
+            score += Math.ceil(10 / 2); 
+        });
+        enemies = [];
+        triggerScreenShake();
+    } else if (type === 'HEAL') {
+        if (lives < 5) lives++;
+    }
+    updateHUD();
+}
+
+function startGame() {
+    gameState = 'PLAYING';
+    score = 0;
+    lives = 3;
+    level = 1;
+    enemies = [];
+    projectiles = [];
+    particles = [];
+    items = [];
+    currentInput = '';
+    enemySpawnInterval = 3000;
+    
+    UI.startScreen.classList.add('hidden');
+    UI.gameOverScreen.classList.add('hidden');
+    UI.hud.classList.remove('hidden');
+    UI.inputContainer.classList.remove('hidden');
+    updateInputDisplay();
+    updateHUD();
+    
+    lastTime = performance.now();
+    requestAnimationFrame(gameLoop);
+}
+
+function gameOver() {
+    gameState = 'GAMEOVER';
+    UI.hud.classList.add('hidden');
+    UI.inputContainer.classList.add('hidden');
+    UI.gameOverScreen.classList.remove('hidden');
+    UI.finalScore.innerText = score;
+}
+
+// Main Game Loop
+function gameLoop(timestamp) {
+    if (gameState !== 'PLAYING') return;
+
+    let dt = timestamp - lastTime;
+    lastTime = timestamp;
+
+    // Clear Canvas
+    ctx.clearRect(0, 0, gameWidth, gameHeight);
+
+    // Grid Background (모던 스타일)
+    ctx.strokeStyle = 'rgba(0,0,0,0.03)';
+    ctx.lineWidth = 1;
+    for(let i=0; i<gameWidth; i+=50) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, gameHeight); ctx.stroke(); }
+    for(let i=0; i<gameHeight; i+=50) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(gameWidth, i); ctx.stroke(); }
+
+    // Spawn Enemies
+    enemySpawnTimer += dt;
+    if (enemySpawnTimer > enemySpawnInterval) {
+        enemies.push(new Enemy());
+        enemySpawnTimer = 0;
+        
+        // 난이도 상승에 따른 스폰 속도 증가
+        enemySpawnInterval = Math.max(800, 3000 - (level * 150));
+
+        // 아이템 스폰 로직 (가끔씩)
+        if (Math.random() < 0.05 + (level * 0.01)) {
+            items.push(new Item(Math.random() > 0.3 ? 'HEAL' : 'BOMB'));
+        }
+    }
+
+    // Update & Draw Items
+    for (let i = items.length - 1; i >= 0; i--) {
+        if (items[i].update(dt)) {
+            items.splice(i, 1); // 시간 초과 소멸
+        } else {
+            items[i].draw(ctx);
+        }
+    }
+
+    // Update & Draw Player
+    player.draw(ctx);
+
+    // Update & Draw Enemies
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        let enemy = enemies[i];
+        enemy.update(dt);
+        enemy.draw(ctx);
+
+        // 플레이어와 충돌 체크
+        let dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+        if (dist < enemy.radius + player.radius) {
+            triggerScreenShake();
+            spawnParticles(player.x, player.y, 20, '#ff0000');
+            lives--;
+            updateHUD();
+            enemies.splice(i, 1);
+
+            if (lives <= 0) {
+                gameOver();
+                return;
+            }
+        }
+    }
+
+    // Update & Draw Projectiles
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        let proj = projectiles[i];
+        let hit = proj.update(dt);
+        proj.draw(ctx);
+
+        if (hit) {
+            // 타격 이펙트
+            spawnParticles(proj.target.x, proj.target.y, 15, '#222');
+            
+            proj.target.currentLives--;
+            if (proj.target.currentLives <= 0) {
+                // 적 처치
+                let enemyIndex = enemies.indexOf(proj.target);
+                if (enemyIndex > -1) {
+                    spawnParticles(proj.target.x, proj.target.y, 30, '#111');
+                    enemies.splice(enemyIndex, 1);
+                    score += 10;
+                    
+                    // 레벨 업 체크
+                    if (score > 0 && score % 100 === 0) {
+                        level++;
+                        spawnParticles(player.x, player.y, 50, '#ffaa00');
+                    }
+                    updateHUD();
+                }
+            }
+            projectiles.splice(i, 1);
+        }
+    }
+
+    // Update & Draw Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt);
+        particles[i].draw(ctx);
+        if (particles[i].alpha <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+// Events
+UI.startBtn.addEventListener('click', startGame);
+UI.restartBtn.addEventListener('click', startGame);
+
+</script>
+</body>
+</html>
