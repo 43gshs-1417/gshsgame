@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2D 서바이벌 배틀로얄 v4 - 무기 특화 버전</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #2c3e50;
+            font-family: 'Malgun Gothic', sans-serif; user-select: none;
+        }
+        #gameCanvas { display: none; cursor: crosshair; }
+        
+        /* 로비 화면 UI */
+        #lobby {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95); padding: 40px; border-radius: 15px;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 100;
+            min-width: 400px;
+        }
+        #lobby h1 { color: #2c3e50; margin-top: 0; font-size: 3em; letter-spacing: -1px; }
+        .mode-btn {
+            display: block; width: 100%; padding: 18px; margin: 15px 0; font-size: 20px;
+            font-weight: bold; color: white; background-color: #e67e22;
+            border: none; border-radius: 8px; cursor: pointer; transition: 0.2s;
+            box-shadow: 0 4px 0 #d35400;
+        }
+        .mode-btn:hover { background-color: #d35400; transform: translateY(-2px); }
+        .mode-btn:active { transform: translateY(2px); box-shadow: none; }
+
+        /* 인게임 UI */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: none;
+        }
+        .hud-box {
+            position: absolute; background: rgba(0, 0, 0, 0.7); color: white;
+            padding: 12px 20px; border-radius: 8px; font-size: 18px; font-weight: bold;
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+        
+        #p1-ui {
+            bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: flex; align-items: center; gap: 20px;
+            border: 2px solid #f1c40f;
+        }
+
+        .health-bar-container { width: 300px; height: 30px; background: #333; border-radius: 6px; overflow: hidden; border: 2px solid #111; position: relative; }
+        .health-bar { width: 100%; height: 100%; background: linear-gradient(to right, #2ecc71, #27ae60); transition: width 0.2s ease-out; }
+        .hp-text { position: absolute; width: 100%; text-align: center; font-size: 14px; line-height: 30px; top: 0; text-shadow: 1px 1px 2px black; }
+        
+        .weapon-info { display: flex; align-items: center; gap: 10px; min-width: 150px; }
+        .weapon-color-dot { width: 18px; height: 18px; border-radius: 3px; border: 2px solid white; }
+
+        #info-box { top: 20px; right: 20px; font-size: 24px; color: #f1c40f; }
+        
+        #message-box {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: white; text-shadow: 2px 2px 4px #000; display: none;
+            background: rgba(0,0,0,0.9); padding: 50px; border-radius: 20px; pointer-events: auto;
+            border: 4px solid #f1c40f;
+        }
+        #message-box h1 { font-size: 60px; margin: 0 0 20px 0; color: #f1c40f; }
+        #message-box button {
+            padding: 15px 50px; font-size: 24px; cursor: pointer; background: #f1c40f;
+            color: #2c3e50; border: none; border-radius: 8px; font-weight: bold;
+        }
+
+        /* 폭발 효과 */
+        .explosion {
+            position: absolute; border-radius: 50%;
+            background: radial-gradient(circle, #fff 0%, #f1c40f 30%, #e67e22 60%, rgba(0,0,0,0) 100%);
+            transform: translate(-50%, -50%); pointer-events: none;
+            animation: explodeAnim 0.4s ease-out forwards;
+            z-index: 50;
+        }
+        @keyframes explodeAnim {
+            0% { width: 0; height: 0; opacity: 1; transform: translate(-50%, -50%) scale(0.1); }
+            100% { width: 250px; height: 250px; opacity: 0; transform: translate(-50%, -50%) scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="lobby">
+        <h1>SURVIV.IO CLONE</h1>
+        <button class="mode-btn" onclick="startGame()">솔로 매치 시작 (AI 30)</button>
+        <div style="color:#555; text-align:left; background:#f9f9f9; padding:15px; border-radius:8px; font-size:13px; line-height: 1.6;">
+            <strong>[조작방법]</strong><br>
+            • <b>WASD</b>: 이동<br>
+            • <b>마우스</b>: 조준 및 사격<br>
+            • <b>F</b>: 무기 및 구급상자 줍기<br>
+            <br>
+            <strong>[무기 가이드]</strong><br>
+            • <b>저격소총</b>: 엄청난 사거리와 데미지, 하지만 느린 연사와 이동속도<br>
+            • <b>미니건</b>: 압도적인 연사력, 발사 중 이동속도가 대폭 감소<br>
+            • <b>로켓런처</b>: 착탄 지점에 광역 폭발 데미지<br>
+            • <b>기관단총</b>: 높은 기동성과 빠른 연사, 짧은 사거리
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    <div id="effect-layer" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; overflow:hidden;"></div>
+    
+    <div id="ui-layer">
+        <div id="info-box" class="hud-box">생존자: <span id="alive-count">0</span></div>
+        
+        <div id="p1-ui" class="hud-box">
+            <div class="health-bar-container">
+                <div id="p1-health-bar" class="health-bar"></div>
+                <div class="hp-text" id="hp-text">100 / 100</div>
+            </div>
+            <div id="p1-weapon" class="weapon-info">
+                <div class="weapon-color-dot" id="w-color"></div>
+                <span id="w-name">Pistol</span>
+            </div>
+        </div>
+        
+        <div id="message-box">
+            <h1 id="game-message">GAME OVER</h1>
+            <button onclick="returnToLobby()">메뉴로 이동</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const lobby = document.getElementById('lobby');
+        const uiLayer = document.getElementById('ui-layer');
+        const effectLayer = document.getElementById('effect-layer');
+
+        const aliveCountEl = document.getElementById('alive-count');
+        const p1HealthBarEl = document.getElementById('p1-health-bar');
+        const hpTextEl = document.getElementById('hp-text');
+        const wNameEl = document.getElementById('w-name');
+        const wColorEl = document.getElementById('w-color');
+        const messageBox = document.getElementById('message-box');
+        const gameMessage = document.getElementById('game-message');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const MAP_SIZE = 4000; 
+        let isGameOver = false;
+        let animationFrameId;
+
+        // --- 무기 데이터 상세 설정 ---
+        const WEAPONS = {
+            pistol: { 
+                name: '권총', damage: 18, fireRate: 300, speed: 20, range: 700, spread: 0.04, 
+                count: 1, color: '#95a5a6', length: 22, type: 'normal', weight: 1.0 
+            },
+            shotgun: { 
+                name: '샷건', damage: 14, fireRate: 900, speed: 22, range: 400, spread: 0.35, 
+                count: 6, color: '#e74c3c', length: 35, type: 'normal', weight: 0.9 
+            },
+            sniper: { 
+                name: '저격소총', damage: 95, fireRate: 1800, speed: 45, range: 2500, spread: 0.00, 
+                count: 1, color: '#27ae60', length: 55, type: 'normal', weight: 0.7 
+            },
+            smg: { 
+                name: '기관단총', damage: 12, fireRate: 80, speed: 18, range: 550, spread: 0.15, 
+                count: 1, color: '#f39c12', length: 28, type: 'normal', weight: 1.1 
+            },
+            rifle: { 
+                name: '돌격소총', damage: 24, fireRate: 160, speed: 28, range: 1100, spread: 0.03, 
+                count: 1, color: '#3498db', length: 42, type: 'normal', weight: 0.85 
+            },
+            minigun: { 
+                name: '미니건', damage: 10, fireRate: 40, speed: 22, range: 800, spread: 0.20, 
+                count: 1, color: '#9b59b6', length: 50, type: 'normal', weight: 0.45 
+            },
+            rocket: { 
+                name: '로켓런처', damage: 50, fireRate: 2200, speed: 14, range: 1400, spread: 0.01, 
+                count: 1, color: '#34495e', length: 45, type: 'rocket', weight: 0.65 
+            }
+        };
+
+        const keys = {};
+        const mouse = { x: 0, y: 0, down: false };
+
+        window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+        window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+        window.addEventListener('mousedown', () => mouse.down = true);
+        window.addEventListener('mouseup', () => mouse.down = false);
+
+        function distance(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+
+        function createExplosion(x, y, owner) {
+            const cameraX = player.x - canvas.width / 2;
+            const cameraY = player.y - canvas.height / 2;
+            const screenX = x - cameraX;
+            const screenY = y - cameraY;
+
+            const div = document.createElement('div');
+            div.className = 'explosion';
+            div.style.left = screenX + 'px';
+            div.style.top = screenY + 'px';
+            effectLayer.appendChild(div);
+            
+            setTimeout(() => { if (div.parentNode) div.parentNode.removeChild(div); }, 400);
+
+            const explosionRadius = 180;
+            const targets = [player, ...enemies];
+            for (let t of targets) {
+                if (t.health > 0) {
+                    const dist = distance(x, y, t.x, t.y);
+                    if (dist < explosionRadius) {
+                        const dmg = WEAPONS.rocket.damage * (1.2 - dist/explosionRadius);
+                        t.takeDamage(dmg);
+                    }
+                }
+            }
+        }
+
+        class WeaponItem {
+            constructor(x, y, type) { this.x = x; this.y = y; this.type = type; this.itemCategory = 'weapon'; this.size = 24; }
+            draw(ctx) {
+                ctx.fillStyle = WEAPONS[this.type].color;
+                ctx.beginPath();
+                ctx.roundRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size, 5);
+                ctx.fill();
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        class HealthItem {
+            constructor(x, y) { this.x = x; this.y = y; this.itemCategory = 'health'; this.size = 22; this.healAmount = 50; }
+            draw(ctx) {
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(this.x - 2, this.y - 8, 4, 16);
+                ctx.fillRect(this.x - 8, this.y - 2, 16, 4);
+                ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+                ctx.strokeRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+            }
+        }
+
+        class Character {
+            constructor(x, y, isPlayer) {
+                this.x = x; this.y = y; this.radius = 22;
+                this.isPlayer = isPlayer;
+                this.health = 100; this.maxHealth = 100;
+                this.baseSpeed = 5.5;
+                this.color = isPlayer ? '#f1c40f' : '#e74c3c'; 
+                this.angle = 0;
+                this.lastShot = 0;
+                this.weapon = 'pistol';
+                this.target = null;
+                this.stateTime = 0;
+                this.moveAngle = Math.random() * Math.PI * 2;
+            }
+
+            takeDamage(amount) {
+                this.health -= amount;
+                if (this.health <= 0) this.health = 0;
+                if (this.isPlayer) this.updateUI();
+            }
+
+            heal(amount) {
+                this.health += amount;
+                if (this.health > this.maxHealth) this.health = this.maxHealth;
+                if (this.isPlayer) this.updateUI();
+            }
+
+            updateUI() {
+                const percent = (this.health / this.maxHealth * 100);
+                p1HealthBarEl.style.width = percent + '%';
+                hpTextEl.innerText = `${Math.ceil(this.health)} / ${this.maxHealth}`;
+                if (percent < 30) p1HealthBarEl.style.background = '#e74c3c';
+                else p1HealthBarEl.style.background = 'linear-gradient(to right, #2ecc71, #27ae60)';
+            }
+
+            equipWeapon(type) {
+                this.weapon = type;
+                if (this.isPlayer) {
+                    wNameEl.innerText = WEAPONS[type].name;
+                    wColorEl.style.backgroundColor = WEAPONS[type].color;
+                }
+            }
+
+            shoot() {
+                const now = Date.now();
+                const w = WEAPONS[this.weapon];
+                if (now - this.lastShot > w.fireRate) {
+                    const barrelX = this.x + Math.cos(this.angle) * (this.radius + w.length/2);
+                    const barrelY = this.y + Math.sin(this.angle) * (this.radius + w.length/2);
+                    for(let i=0; i<w.count; i++) {
+                        const spreadAngle = this.angle + (Math.random() - 0.5) * w.spread;
+                        bullets.push(new Bullet(barrelX, barrelY, spreadAngle, this, w));
+                    }
+                    this.lastShot = now;
+                }
+            }
+
+            update() {
+                if (this.health <= 0) return;
+
+                if (distance(this.x, this.y, MAP_SIZE/2, MAP_SIZE/2) > zone.radius) {
+                    this.takeDamage(0.25);
+                }
+
+                // 상호작용
+                if (this.isPlayer) {
+                    for (let i = items.length - 1; i >= 0; i--) {
+                        if (distance(this.x, this.y, items[i].x, items[i].y) < this.radius + 35) {
+                            if (keys['f']) {
+                                if (items[i].itemCategory === 'weapon') {
+                                    const oldWeapon = this.weapon;
+                                    this.equipWeapon(items[i].type);
+                                    items.splice(i, 1);
+                                    if (oldWeapon !== 'pistol') items.push(new WeaponItem(this.x, this.y, oldWeapon));
+                                    keys['f'] = false;
+                                } else if (items[i].itemCategory === 'health' && this.health < this.maxHealth) {
+                                    this.heal(items[i].healAmount);
+                                    items.splice(i, 1);
+                                    keys['f'] = false;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let dx = 0, dy = 0;
+                if (this.isPlayer) {
+                    if (keys['w']) dy -= 1; if (keys['s']) dy += 1;
+                    if (keys['a']) dx -= 1; if (keys['d']) dx += 1;
+                    const cameraX = this.x - canvas.width/2;
+                    const cameraY = this.y - canvas.height/2;
+                    this.angle = Math.atan2(mouse.y - (this.y - cameraY), mouse.x - (this.x - cameraX));
+                    if (mouse.down) this.shoot();
+                } else {
+                    this.stateTime--;
+                    if (this.stateTime <= 0 || !this.target || this.target.health <= 0) {
+                        let nearest = null, minDist = 900;
+                        [player, ...enemies].forEach(t => {
+                            if (t !== this && t.health > 0) {
+                                let d = distance(this.x, this.y, t.x, t.y);
+                                if (d < minDist) { minDist = d; nearest = t; }
+                            }
+                        });
+                        this.target = nearest;
+                        this.stateTime = 60 + Math.random() * 60;
+                        if (!this.target) this.moveAngle += (Math.random() - 0.5);
+                    }
+
+                    if (this.target) {
+                        this.angle = Math.atan2(this.target.y - this.y, this.target.x - this.target.x); // 사격각
+                        const d = distance(this.x, this.y, this.target.x, this.target.y);
+                        const w = WEAPONS[this.weapon];
+                        if (d < w.range) this.shoot();
+                        
+                        // 도주 혹은 추격
+                        const moveTargetAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                        if (d > w.range * 0.7) { dx = Math.cos(moveTargetAngle); dy = Math.sin(moveTargetAngle); }
+                        else if (d < 200) { dx = -Math.cos(moveTargetAngle); dy = -Math.sin(moveTargetAngle); }
+                        else { dx = Math.cos(this.moveAngle); dy = Math.sin(this.moveAngle); }
+                    } else {
+                        dx = Math.cos(this.moveAngle); dy = Math.sin(this.moveAngle);
+                        // 벽 충돌 방지
+                        if (this.x < 100 || this.x > MAP_SIZE - 100 || this.y < 100 || this.y > MAP_SIZE - 100) {
+                            this.moveAngle = Math.atan2(MAP_SIZE/2 - this.y, MAP_SIZE/2 - this.x);
+                        }
+                    }
+                }
+
+                if (dx !== 0 || dy !== 0) {
+                    const mag = Math.hypot(dx, dy);
+                    const weight = WEAPONS[this.weapon].weight;
+                    let finalSpeed = this.baseSpeed * weight;
+                    // 미니건 발사 중에는 더 느려짐
+                    if (this.weapon === 'minigun' && (this.isPlayer ? mouse.down : this.target)) finalSpeed *= 0.6;
+                    
+                    this.x += (dx / mag) * finalSpeed;
+                    this.y += (dy / mag) * finalSpeed;
+                }
+
+                this.x = Math.max(this.radius, Math.min(MAP_SIZE - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(MAP_SIZE - this.radius, this.y));
+            }
+
+            draw(ctx) {
+                ctx.save(); ctx.translate(this.x, this.y); 
+                
+                // 그림자
+                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                ctx.beginPath(); ctx.arc(3, 3, this.radius, 0, Math.PI*2); ctx.fill();
+
+                ctx.rotate(this.angle);
+                // 손
+                ctx.fillStyle = '#f3cba8'; ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(18, -16, 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.arc(18, 16, 7, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+                // 무기
+                const w = WEAPONS[this.weapon];
+                ctx.fillStyle = w.color;
+                if (this.weapon === 'minigun') {
+                    ctx.fillRect(8, -12, w.length, 24); ctx.strokeRect(8, -12, w.length, 24);
+                } else if (this.weapon === 'rocket') {
+                    ctx.fillRect(5, -10, w.length, 20); ctx.strokeRect(5, -10, w.length, 20);
+                } else {
+                    ctx.fillRect(10, -6, w.length, 12); ctx.strokeRect(10, -6, w.length, 12);
+                }
+                ctx.restore();
+
+                // 몸체
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+                ctx.fillStyle = this.color; ctx.fill();
+                ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.stroke();
+
+                if (!this.isPlayer) {
+                    ctx.fillStyle = '#000'; ctx.fillRect(this.x - 20, this.y - 40, 40, 6);
+                    ctx.fillStyle = '#2ecc71'; ctx.fillRect(this.x - 20, this.y - 40, 40 * (this.health/this.maxHealth), 6);
+                }
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, angle, owner, wData) {
+                this.x = x; this.y = y; this.start = {x, y};
+                this.vx = Math.cos(angle) * wData.speed;
+                this.vy = Math.sin(angle) * wData.speed;
+                this.owner = owner; this.wData = wData;
+                this.active = true;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                if (distance(this.x, this.y, this.start.x, this.start.y) > this.wData.range) {
+                    if (this.wData.type === 'rocket') createExplosion(this.x, this.y, this.owner);
+                    this.active = false;
+                }
+            }
+            draw(ctx) {
+                ctx.beginPath();
+                if (this.wData.type === 'rocket') {
+                    ctx.fillStyle = '#34495e'; ctx.arc(this.x, this.y, 8, 0, Math.PI*2);
+                } else {
+                    ctx.fillStyle = '#f1c40f'; ctx.arc(this.x, this.y, 4, 0, Math.PI*2);
+                }
+                ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+            }
+        }
+
+        class Obstacle {
+            constructor(x, y, type) { this.x = x; this.y = y; this.type = type; this.radius = type==='tree'?60:45; }
+            draw(ctx) {
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+                ctx.fillStyle = this.type==='tree'?'#27ae60':'#95a5a6'; ctx.fill();
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.stroke();
+                if (this.type === 'tree') {
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                    ctx.beginPath(); ctx.arc(this.x - 15, this.y - 15, this.radius/2, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        let player, enemies = [], bullets = [], obstacles = [], items = [], zone = { radius: MAP_SIZE };
+
+        function startGame() {
+            lobby.style.display = 'none'; canvas.style.display = 'block'; uiLayer.style.display = 'block';
+            resize();
+            player = new Character(MAP_SIZE/2, MAP_SIZE/2, true);
+            player.updateUI();
+            enemies = []; bullets = []; obstacles = []; items = [];
+            zone.radius = MAP_SIZE;
+            isGameOver = false; messageBox.style.display = 'none';
+
+            for(let i=0; i<80; i++) obstacles.push(new Obstacle(Math.random()*MAP_SIZE, Math.random()*MAP_SIZE, Math.random()>0.3?'tree':'stone'));
+            for(let i=0; i<30; i++) enemies.push(new Character(Math.random()*MAP_SIZE, Math.random()*MAP_SIZE, false));
+            
+            const types = Object.keys(WEAPONS);
+            for(let i=0; i<100; i++) items.push(new WeaponItem(Math.random()*MAP_SIZE, Math.random()*MAP_SIZE, types[Math.floor(Math.random()*types.length)]));
+            for(let i=0; i<50; i++) items.push(new HealthItem(Math.random()*MAP_SIZE, Math.random()*MAP_SIZE));
+
+            gameLoop();
+        }
+
+        function gameLoop() {
+            if (isGameOver) return;
+            update(); draw();
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function update() {
+            if (zone.radius > 200) zone.radius -= 0.35;
+            aliveCountEl.innerText = enemies.length + (player.health > 0 ? 1 : 0);
+            
+            player.update();
+            enemies.forEach((e, idx) => {
+                e.update();
+                if (e.health <= 0) {
+                    items.push(new WeaponItem(e.x, e.y, e.weapon));
+                    enemies.splice(idx, 1);
+                }
+            });
+
+            if (player.health <= 0) doGameOver("죽었습니다!");
+            else if (enemies.length === 0) doGameOver("승리! 최후의 1인!");
+
+            for(let i=bullets.length-1; i>=0; i--) {
+                const b = bullets[i]; b.update();
+                if (!b.active) { bullets.splice(i, 1); continue; }
+
+                let hit = false;
+                [player, ...enemies].forEach(t => {
+                    if (t !== b.owner && t.health > 0 && distance(b.x, b.y, t.x, t.y) < t.radius) {
+                        if (b.wData.type === 'rocket') createExplosion(b.x, b.y, b.owner);
+                        else t.takeDamage(b.wData.damage);
+                        hit = true;
+                    }
+                });
+                
+                obstacles.forEach(o => {
+                    if (distance(b.x, b.y, o.x, o.y) < o.radius) {
+                        if (b.wData.type === 'rocket') createExplosion(b.x, b.y, b.owner);
+                        hit = true;
+                    }
+                });
+
+                if (hit) bullets.splice(i, 1);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            const camX = player.x - canvas.width/2;
+            const camY = player.y - canvas.height/2;
+            ctx.save(); ctx.translate(-camX, -camY);
+
+            // 바닥
+            ctx.fillStyle = '#7db254'; ctx.fillRect(0,0,MAP_SIZE,MAP_SIZE);
+            ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+            for(let i=0; i<MAP_SIZE; i+=200) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, MAP_SIZE); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(MAP_SIZE, i); ctx.stroke();
+            }
+
+            items.forEach(item => {
+                item.draw(ctx);
+                if (distance(player.x, player.y, item.x, item.y) < 60) {
+                    ctx.fillStyle = "white"; ctx.font = "bold 14px Arial"; ctx.textAlign="center";
+                    ctx.fillText("[F] 줍기", item.x, item.y - 30);
+                }
+            });
+            
+            obstacles.filter(o => o.type==='stone').forEach(o => o.draw(ctx));
+            bullets.forEach(b => b.draw(ctx));
+            [player, ...enemies].forEach(c => c.draw(ctx));
+            obstacles.filter(o => o.type==='tree').forEach(o => o.draw(ctx));
+
+            // 자기장
+            ctx.beginPath();
+            ctx.arc(MAP_SIZE/2, MAP_SIZE/2, zone.radius, 0, Math.PI*2);
+            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 10; ctx.stroke();
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.15)';
+            ctx.rect(MAP_SIZE, -1000, -MAP_SIZE*2, MAP_SIZE*2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function doGameOver(msg) {
+            isGameOver = true; gameMessage.innerText = msg; messageBox.style.display = 'block';
+        }
+        function returnToLobby() {
+            cancelAnimationFrame(animationFrameId);
+            lobby.style.display = 'block'; canvas.style.display = 'none'; uiLayer.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
