@@ -1,0 +1,2234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Buckshot Roulette - Ultimate P2P Edition</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM (UMD) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- PeerJS for P2P Multiplayer (독자적 멀티플레이 엔진) -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+  <!-- Firebase Compat (Babel JSX와 함께 사용하기 위한 UMD 버전) -->
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap');
+    
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    .font-black-han { font-family: 'Black Han Sans', sans-serif; }
+
+    @keyframes shake {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      20% { transform: translate(-8px, 4px) rotate(-2deg); }
+      40% { transform: translate(8px, -4px) rotate(2deg); }
+      60% { transform: translate(-8px, -4px) rotate(-2deg); }
+      80% { transform: translate(8px, 4px) rotate(2deg); }
+    }
+    @keyframes itemPopup {
+      0% { transform: scale(0); opacity: 0; }
+      20% { transform: scale(1.5); opacity: 1; }
+      80% { transform: scale(1.5); opacity: 1; }
+      100% { transform: scale(0); opacity: 0; }
+    }
+    .anim-shake { animation: shake 0.4s ease-in-out; }
+    .anim-item-popup { animation: itemPopup 1.2s forwards; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    .targeting-mode { cursor: crosshair !important; }
+    .targeting-mode button { cursor: crosshair !important; }
+    
+    /* 어두운 분위기 효과 */
+    .text-shadow-blood { text-shadow: 0 0 10px rgba(220,38,38,0.8), 0 0 20px rgba(220,38,38,0.4); }
+    .crt-overlay {
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+      background-size: 100% 2px, 3px 100%;
+      pointer-events: none;
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 50;
+      opacity: 0.15;
+    }
+    .panel-blood-border {
+      border: 1px solid #3f0f0f;
+      box-shadow: 0 0 15px rgba(100, 10, 10, 0.3) inset, 0 4px 6px rgba(0,0,0,0.5);
+    }
+
+    /* 가로 모드 강제 UI */
+    #portrait-warning {
+      display: none;
+      position: fixed; inset: 0; z-index: 9999;
+      background: #000; color: white;
+      flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    }
+    @media screen and (orientation: portrait) {
+      #portrait-warning { display: flex; }
+      #main-app { display: none; }
+    }
+  </style>
+</head>
+<body class="bg-[#050505] text-[#e5e5e5] h-[100dvh] w-full overflow-hidden selection:bg-red-900 relative">
+  <div class="crt-overlay"></div>
+  
+  <!-- 세로 화면 경고창 -->
+  <div id="portrait-warning">
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-500 mb-6 animate-pulse"><path d="M2 12h20"/><path d="M12 2v20"/><rect width="12" height="20" x="6" y="2" rx="2" ry="2" transform="rotate(90 12 12)"/></svg>
+      <h2 class="text-3xl font-black-han text-red-600 mb-2 tracking-widest text-shadow-blood">화면 회전 권장</h2>
+      <p class="text-neutral-400 font-bold">이 게임은 가로 화면(Landscape) 전용입니다.<br/>기기를 가로로 눕혀주세요.</p>
+  </div>
+
+  <div id="main-app" class="h-full w-full relative z-10">
+      <div id="root" class="h-full w-full"></div>
+  </div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // =======================================================
+    // 🔥 파이어베이스(Firebase) 설정 (글로벌 명예의 전당용) 🔥
+    // =======================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDN9mvAcYbNikVDaxoQ8vCygHFo72_CMAE",
+      authDomain: "game-a7b46.firebaseapp.com",
+      projectId: "game-a7b46",
+      storageBucket: "game-a7b46.firebasestorage.app",
+      messagingSenderId: "1002249344794",
+      appId: "1:1002249344794:web:cb1e78e6aa55b54ca37ea3",
+      measurementId: "G-ES8DKV3WDN"
+    };
+
+    const isFirebaseConfigured = firebaseConfig.apiKey && firebaseConfig.apiKey !== "" && typeof firebase !== 'undefined';
+    let app, auth, db, appId;
+    if (isFirebaseConfigured) {
+      app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
+      auth = firebase.auth();
+      db = firebase.firestore();
+      appId = 'default-app-id';
+    } else {
+      appId = 'default-app-id';
+    }
+
+    // === 아이콘 SVG ===
+    const SearchIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
+    const CoffeeIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="9" y1="2" x2="9" y2="4"/><line x1="15" y1="2" x2="15" y2="4"/></svg>;
+    const HeartIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>;
+    const ScissorsIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`rotate-90 ${className}`}><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>;
+    const ZapIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
+    const CrosshairIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>;
+    const ShieldAlertIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
+    const TrophyIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 1.1-.9 2-2 2H6.5"/><path d="M14 14.66V17c0 1.1.9 2 2 2h1.5"/><path d="M18 2H6v7c0 3.31 2.69 6 6 6s6-2.69 6-6V2Z"/></svg>;
+    const LockIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+    const InfoIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
+    const UsersIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+    const LogOutIcon = ({ size, className }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>;
+
+    // === 아이템 및 설정 ===
+    const ITEM_DICT = {
+      glass: { name: '스캐너', icon: <SearchIcon size={18} />, color: 'text-blue-400', desc: '다음 탄을 몰래 확인합니다.' },
+      beer: { name: '음료수', icon: <CoffeeIcon size={18} />, color: 'text-yellow-400', desc: '장전된 탄을 하나 버립니다.' },
+      cig: { name: '담배', icon: <HeartIcon size={18} />, color: 'text-green-400', desc: '체력을 1 회복합니다.' },
+      saw: { name: '톱', icon: <ScissorsIcon size={18} />, color: 'text-red-500', desc: '다음 데미지를 2로 만듭니다.' },
+      adr: { name: '아드레날린', icon: <ZapIcon size={18} />, color: 'text-purple-400', desc: '상대의 아이템을 훔칩니다 (아드레날린 제외).' }
+    };
+
+    const STAGE_CONFIG = {
+      1: { maxHp: 3, itemsPerRound: 0, maxItems: 0, shellsRange: [2, 4] },
+      2: { maxHp: 4, itemsPerRound: 2, maxItems: 3, shellsRange: [3, 5] },
+      3: { maxHp: 5, itemsPerRound: 4, maxItems: 4, shellsRange: [4, 5] }
+    };
+
+    const DEFAULT_MP_SETTINGS = {
+      mode: 'ffa',
+      teamCount: 2,
+      playersPerTeam: 2,
+      teamPlayerCap: 4,
+      playerCap: 4,
+      maxHp: 4,
+      maxItems: 4,
+      itemsEnabled: true,
+      itemsPerRound: 2,
+      shellMin: 3,
+      shellMax: 8
+    };
+    const TEAM_COLORS = {
+      A: { bg: 'bg-red-950/30', border: 'border-red-900', text: 'text-red-500', gameOppBorder: 'border-t-red-600', gameMyBorder: 'border-b-red-600' },
+      B: { bg: 'bg-blue-950/30', border: 'border-blue-900', text: 'text-blue-500', gameOppBorder: 'border-t-blue-600', gameMyBorder: 'border-b-blue-600' },
+      C: { bg: 'bg-green-950/30', border: 'border-green-900', text: 'text-green-500', gameOppBorder: 'border-t-green-600', gameMyBorder: 'border-b-green-600' },
+      D: { bg: 'bg-yellow-950/30', border: 'border-yellow-900', text: 'text-yellow-500', gameOppBorder: 'border-t-yellow-600', gameMyBorder: 'border-b-yellow-600' }
+    };
+
+    const TEAM_KEYS = ['A', 'B', 'C', 'D'];
+
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+    const normalizeMpSettings = (settings = {}) => {
+      const mode = settings.mode === 'teams' ? 'teams' : 'ffa';
+      const teamCount = clamp(parseInt(settings.teamCount ?? DEFAULT_MP_SETTINGS.teamCount, 10) || DEFAULT_MP_SETTINGS.teamCount, 2, 4);
+      const playersPerTeam = clamp(parseInt(settings.playersPerTeam ?? DEFAULT_MP_SETTINGS.playersPerTeam, 10) || DEFAULT_MP_SETTINGS.playersPerTeam, 1, 4);
+      const playerCap = clamp(parseInt(settings.playerCap ?? DEFAULT_MP_SETTINGS.playerCap, 10) || DEFAULT_MP_SETTINGS.playerCap, 2, 8);
+      const teamCapacity = teamCount * playersPerTeam;
+      const teamPlayerCap = clamp(parseInt(settings.teamPlayerCap ?? settings.playerCap ?? DEFAULT_MP_SETTINGS.teamPlayerCap, 10) || DEFAULT_MP_SETTINGS.teamPlayerCap, 2, 8);
+      const maxHp = clamp(parseInt(settings.maxHp ?? DEFAULT_MP_SETTINGS.maxHp, 10) || DEFAULT_MP_SETTINGS.maxHp, 1, 8);
+      const maxItems = clamp(parseInt(settings.maxItems ?? DEFAULT_MP_SETTINGS.maxItems, 10) || DEFAULT_MP_SETTINGS.maxItems, 0, 8);
+      const itemsPerRound = clamp(parseInt(settings.itemsPerRound ?? DEFAULT_MP_SETTINGS.itemsPerRound, 10) || 0, 0, maxItems);
+      const shellMin = clamp(parseInt(settings.shellMin ?? DEFAULT_MP_SETTINGS.shellMin, 10) || DEFAULT_MP_SETTINGS.shellMin, 2, 8);
+      const shellMax = clamp(parseInt(settings.shellMax ?? DEFAULT_MP_SETTINGS.shellMax, 10) || DEFAULT_MP_SETTINGS.shellMax, shellMin, 10);
+      const itemsEnabled = settings.itemsEnabled !== false;
+
+      return { mode, teamCount, playersPerTeam, teamPlayerCap, playerCap, maxHp, maxItems, itemsEnabled, itemsPerRound, shellMin, shellMax };
+    };
+
+    const getMpMaxPlayers = (settings = {}) => {
+      const safe = normalizeMpSettings(settings);
+      return safe.mode === 'teams' ? safe.teamPlayerCap : safe.playerCap;
+    };
+
+    const getInitialMpPlayer = (id, name, settings = {}, team = 'A') => {
+      const safe = normalizeMpSettings(settings);
+      return { id, name, hp: safe.maxHp, items: Array(safe.maxItems).fill(null), team, isDead: false };
+    };
+
+    const assignTeamForLobby = (players = [], settings = {}) => {
+      const safe = normalizeMpSettings(settings);
+      if (safe.mode !== 'teams') {
+        const used = players.map(p => p.team);
+        return TEAM_KEYS.find(k => !used.includes(k)) || TEAM_KEYS[players.length % TEAM_KEYS.length];
+      }
+      const activeTeams = TEAM_KEYS.slice(0, safe.teamCount);
+      let bestTeam = activeTeams[0];
+      let bestCount = Infinity;
+      activeTeams.forEach(team => {
+        const count = players.filter(p => p.team === team).length;
+        if (count < bestCount) {
+          bestCount = count;
+          bestTeam = team;
+        }
+      });
+      return bestTeam;
+    };
+
+    const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const generateRoomCode = () => {
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
+      }
+      return code;
+    };
+
+
+    const getWinRate = (wins, losses) => {
+      const total = (wins || 0) + (losses || 0);
+      if (total === 0) return '0%';
+      return Math.round((wins / total) * 100) + '%';
+    };
+
+    const shuffleArray = (array) => {
+      let newArr = [...(array || [])];
+      for (let i = newArr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+      }
+      return newArr;
+    };
+
+    const getRandomItemType = () => {
+      const rand = Math.random() * 100;
+      if (rand < 15) return 'cig'; 
+      if (rand < 30) return 'adr'; 
+      const others = ['glass', 'beer', 'saw'];
+      return others[Math.floor(Math.random() * others.length)];
+    };
+
+    // --- MAIN APP COMPONENT ---
+    function App() {
+      // 1. 글로벌/UI 상태
+      const [appMode, setAppMode] = useState('menu'); 
+      const [toastMsg, setToastMsg] = useState('');
+      const [useFirebase, setUseFirebase] = useState(isFirebaseConfigured); 
+      
+      const showToast = (msg) => {
+        setToastMsg(msg);
+        setTimeout(() => setToastMsg(''), 3500);
+      };
+      
+      const [animState, setAnimState] = useState(null);
+      const [activeItemAnim, setActiveItemAnim] = useState(null);
+      
+      const spLogEndRef = useRef(null);
+      const mpLogEndRef = useRef(null);
+
+      const [showHoF, setShowHoF] = useState(false);
+      const [showRules, setShowRules] = useState(false);
+      const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+      const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+      // 2. 프로필 관리 (오직 로컬에서만 처리)
+      const [profile, setProfile] = useState(null);
+      const [loginInput, setLoginInput] = useState('');
+      const [passwordInput, setPasswordInput] = useState('');
+      const [registerNameInput, setRegisterNameInput] = useState('');
+      const [registerPasswordInput, setRegisterPasswordInput] = useState('');
+      const [captchaTarget, setCaptchaTarget] = useState('신호등');
+      const [captchaTiles, setCaptchaTiles] = useState([]);
+      const [captchaSelected, setCaptchaSelected] = useState([]);
+      const [isLoggingIn, setIsLoggingIn] = useState(false);
+      const [authVersion, setAuthVersion] = useState(0);
+
+      const makeCaptchaTileSvg = (kind, variant = 0) => {
+        const bgSets = [
+          ['#8ec5fc', '#e0c3fc'],
+          ['#d4fc79', '#96e6a1'],
+          ['#fddb92', '#d1fdff'],
+          ['#cfd9df', '#e2ebf0']
+        ];
+        const pair = bgSets[variant % bgSets.length];
+        const scene = {
+          traffic_light: `
+            <rect x="0" y="0" width="100" height="100" fill="url(#g)"/>
+            <rect x="0" y="70" width="100" height="30" fill="#6b7280"/>
+            <rect x="52" y="18" width="8" height="58" rx="3" fill="#4b5563"/>
+            <rect x="40" y="10" width="32" height="42" rx="6" fill="#111827" stroke="#374151" stroke-width="2"/>
+            <circle cx="56" cy="20" r="5" fill="#ef4444"/>
+            <circle cx="56" cy="31" r="5" fill="#f59e0b"/>
+            <circle cx="56" cy="42" r="5" fill="#22c55e"/>
+            <rect x="6" y="62" width="20" height="8" fill="#9ca3af"/>
+            <rect x="74" y="62" width="20" height="8" fill="#9ca3af"/>
+          `,
+          bus: `
+            <rect x="0" y="0" width="100" height="100" fill="url(#g)"/>
+            <rect x="0" y="72" width="100" height="28" fill="#4b5563"/>
+            <rect x="12" y="32" width="70" height="28" rx="6" fill="#f59e0b" stroke="#92400e" stroke-width="2"/>
+            <rect x="20" y="38" width="12" height="10" fill="#dbeafe"/>
+            <rect x="35" y="38" width="12" height="10" fill="#dbeafe"/>
+            <rect x="50" y="38" width="12" height="10" fill="#dbeafe"/>
+            <rect x="65" y="38" width="10" height="18" fill="#e5e7eb"/>
+            <circle cx="28" cy="63" r="6" fill="#111827"/>
+            <circle cx="66" cy="63" r="6" fill="#111827"/>
+          `,
+          tree: `
+            <rect x="0" y="0" width="100" height="100" fill="url(#g)"/>
+            <rect x="0" y="74" width="100" height="26" fill="#65a30d"/>
+            <rect x="46" y="44" width="10" height="26" fill="#92400e"/>
+            <circle cx="51" cy="36" r="18" fill="#22c55e"/>
+            <circle cx="39" cy="40" r="12" fill="#16a34a"/>
+            <circle cx="63" cy="40" r="12" fill="#16a34a"/>
+          `,
+          bicycle: `
+            <rect x="0" y="0" width="100" height="100" fill="url(#g)"/>
+            <rect x="0" y="76" width="100" height="24" fill="#6b7280"/>
+            <circle cx="28" cy="62" r="14" fill="none" stroke="#111827" stroke-width="4"/>
+            <circle cx="68" cy="62" r="14" fill="none" stroke="#111827" stroke-width="4"/>
+            <path d="M28 62 L42 45 L52 62 L68 62 L56 42 L42 45" fill="none" stroke="#dc2626" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="52" y1="62" x2="58" y2="35" stroke="#111827" stroke-width="4"/>
+            <line x1="40" y1="44" x2="35" y2="36" stroke="#111827" stroke-width="4"/>
+          `,
+          hydrant: `
+            <rect x="0" y="0" width="100" height="100" fill="url(#g)"/>
+            <rect x="0" y="76" width="100" height="24" fill="#6b7280"/>
+            <rect x="40" y="34" width="20" height="30" rx="6" fill="#ef4444"/>
+            <rect x="34" y="26" width="32" height="12" rx="4" fill="#ef4444"/>
+            <rect x="30" y="44" width="10" height="10" rx="3" fill="#ef4444"/>
+            <rect x="60" y="44" width="10" height="10" rx="3" fill="#ef4444"/>
+            <circle cx="35" cy="49" r="4" fill="#fca5a5"/>
+            <circle cx="65" cy="49" r="4" fill="#fca5a5"/>
+          `,
+          car: `
+            <rect x="0" y="0" width="100" height="100" fill="url(#g)"/>
+            <rect x="0" y="74" width="100" height="26" fill="#6b7280"/>
+            <path d="M24 56 L34 42 H62 L74 56 V64 H24 Z" fill="#3b82f6" stroke="#1e3a8a" stroke-width="2"/>
+            <rect x="38" y="45" width="20" height="10" fill="#dbeafe"/>
+            <circle cx="34" cy="66" r="7" fill="#111827"/>
+            <circle cx="66" cy="66" r="7" fill="#111827"/>
+          `
+        };
+        const inner = scene[kind] || scene.tree;
+        return `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${pair[0]}"/><stop offset="100%" stop-color="${pair[1]}"/></linearGradient></defs>${inner}</svg>`)}`;
+      };
+
+      const buildImageCaptcha = () => {
+        const pool = ['traffic_light','traffic_light','traffic_light','bus','tree','bicycle','hydrant','car','tree'];
+        const shuffled = shuffleArray(pool.map((kind, idx) => ({
+          id: `captcha-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+          kind,
+          label: kind === 'traffic_light' ? '신호등' : ({ bus: '버스', tree: '나무', bicycle: '자전거', hydrant: '소화전', car: '자동차' })[kind],
+          src: makeCaptchaTileSvg(kind, idx)
+        })));
+        setCaptchaTarget('신호등');
+        setCaptchaTiles(shuffled);
+        setCaptchaSelected([]);
+      };
+
+      const toggleCaptchaTile = (id) => {
+        setCaptchaSelected(prev => prev.includes(id) ? prev.filter(v => v !== id) : [...prev, id]);
+      };
+
+      const isCaptchaVerified = () => {
+        const selectedSet = new Set(captchaSelected);
+        const targetIds = captchaTiles.filter(tile => tile.label === captchaTarget).map(tile => tile.id);
+        if (targetIds.length === 0) return false;
+        if (selectedSet.size !== targetIds.length) return false;
+        return targetIds.every(id => selectedSet.has(id));
+      };
+
+      const getUsersSafely = () => {
+        try {
+          const raw = localStorage.getItem('buckshot_users');
+          if (!raw) return {};
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+          console.error('User storage read error:', e);
+          return {};
+        }
+      };
+
+      const saveUsersSafely = (usersObj) => {
+        try {
+          localStorage.setItem('buckshot_users', JSON.stringify(usersObj || {}));
+          return true;
+        } catch (e) {
+          console.error('User storage save error:', e);
+          showToast('브라우저 저장소에 접근할 수 없습니다. 시크릿 모드나 저장 제한을 확인해주세요.');
+          return false;
+        }
+      };
+
+      const defaultizeProfile = (userObj, fallbackName = '') => ({
+        name: userObj?.name || fallbackName || 'Player',
+        password: userObj?.password || '',
+        incredibleUnlocked: !!userObj?.incredibleUnlocked,
+        incredibleWins: userObj?.incredibleWins || 0,
+        spWins: userObj?.spWins || 0,
+        spLosses: userObj?.spLosses || 0,
+        mpWins: userObj?.mpWins || 0,
+        mpLosses: userObj?.mpLosses || 0,
+        hof: Array.isArray(userObj?.hof) ? userObj.hof : []
+      });
+
+      useEffect(() => {
+        buildImageCaptcha();
+      }, []);
+
+      useEffect(() => {
+        try {
+          const savedName = localStorage.getItem('buckshot_current_user');
+          if (savedName) {
+             const allUsers = getUsersSafely();
+             if (allUsers[savedName]) { setProfile(defaultizeProfile(allUsers[savedName], savedName)); setAuthVersion(v => v + 1); }
+          }
+        } catch (e) {
+          console.error('Current user load error:', e);
+        }
+      }, []);
+
+      const updateProfile = (updates) => {
+        setProfile(prev => {
+          if (!prev) return prev;
+          const newProf = defaultizeProfile({ ...prev, ...updates }, prev.name);
+          const allUsers = getUsersSafely();
+          allUsers[newProf.name] = newProf;
+          saveUsersSafely(allUsers);
+          return newProf;
+        });
+      };
+
+      const uploadToHoF = async (prof) => {
+        if (!useFirebase || !user || !db) return;
+        try {
+            await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('hof').doc(prof.name).set({
+                name: prof.name,
+                incredibleWins: prof.incredibleWins || 0,
+                mpWins: prof.mpWins || 0,
+                spWins: prof.spWins || 0,
+                spLosses: prof.spLosses || 0,
+                mpLosses: prof.mpLosses || 0
+            });
+        } catch (e) { console.error("HoF Upload Error:", e); }
+      };
+
+      const incrementStat = (statName) => {
+        setProfile(prev => {
+          if (!prev) return prev;
+          const newProf = defaultizeProfile({ ...prev, [statName]: (prev[statName] || 0) + 1 }, prev.name);
+          const allUsers = getUsersSafely();
+          allUsers[newProf.name] = newProf;
+          saveUsersSafely(allUsers);
+          
+          if (statName === 'incredibleWins' || statName === 'mpWins') {
+              uploadToHoF(newProf);
+          }
+          return newProf;
+        });
+      };
+
+      const handleLogin = () => {
+        const name = loginInput.trim();
+        const pwd = passwordInput.trim();
+        if (!name || !pwd) return showToast("닉네임과 비밀번호를 모두 입력해주세요.");
+        
+        setIsLoggingIn(true);
+        try {
+          const allUsers = getUsersSafely();
+          const userProfile = allUsers[name];
+          
+          if (userProfile) {
+             if ((userProfile.password || '') === pwd) {
+                const safeProfile = defaultizeProfile(userProfile, name);
+                setProfile(safeProfile);
+                setAuthVersion(v => v + 1);
+                try { localStorage.setItem('buckshot_current_user', name); } catch (e) { console.error(e); }
+                setLoginInput('');
+                setPasswordInput('');
+                showToast(`환영합니다, ${name}님!`);
+             } else {
+                showToast("비밀번호가 틀렸습니다.");
+             }
+          } else {
+             showToast("존재하지 않는 닉네임입니다. 먼저 가입해주세요.");
+          }
+        } catch (e) {
+          console.error('Login error:', e);
+          showToast('로그인 중 오류가 발생했습니다. 저장된 데이터 형식을 확인해주세요.');
+        }
+        setIsLoggingIn(false);
+      };
+
+      const handleRegister = () => {
+        const name = registerNameInput.trim();
+        const pwd = registerPasswordInput.trim();
+        if (!name || !pwd) return showToast("닉네임과 비밀번호를 모두 입력해주세요.");
+        if (!isCaptchaVerified()) {
+          buildImageCaptcha();
+          return showToast("사람 확인에 실패했습니다. 신호등이 포함된 칸을 정확히 모두 골라주세요.");
+        }
+        
+        setIsLoggingIn(true);
+        try {
+          const allUsers = getUsersSafely();
+          const userProfile = allUsers[name];
+          
+          if (userProfile) {
+             showToast("이미 존재하는 닉네임입니다. 다른 닉네임을 사용하거나 로그인해주세요.");
+          } else {
+             const defaultProf = defaultizeProfile({ name, password: pwd, incredibleUnlocked: false, incredibleWins: 0, spWins: 0, spLosses: 0, mpWins: 0, mpLosses: 0, hof: [] }, name);
+             allUsers[name] = defaultProf;
+             const saved = saveUsersSafely(allUsers);
+             if (!saved) {
+               setIsLoggingIn(false);
+               return;
+             }
+             try { localStorage.setItem('buckshot_current_user', name); } catch (e) { console.error(e); }
+             setProfile(defaultProf);
+             setAuthVersion(v => v + 1);
+             setRegisterNameInput('');
+             setRegisterPasswordInput('');
+             buildImageCaptcha();
+             setLoginInput('');
+             setPasswordInput('');
+             setShowRegisterModal(false);
+             showToast(`가입 완료! 환영합니다, ${name}님!`);
+           }
+        } catch (e) {
+          console.error('Register error:', e);
+          showToast('회원가입 중 오류가 발생했습니다. 브라우저 저장소를 확인해주세요.');
+        }
+        setIsLoggingIn(false);
+      };
+
+      const executeLogout = () => {
+        try { localStorage.removeItem('buckshot_current_user'); } catch (e) { console.error(e); }
+        setProfile(null);
+        setAppMode('menu');
+        setShowLogoutConfirm(false);
+        setLoginInput('');
+        setPasswordInput('');
+        setRegisterNameInput('');
+        setRegisterPasswordInput('');
+        buildImageCaptcha();
+        setShowRegisterModal(false);
+      };
+
+      // 3. 글로벌 명예의 전당 (Firebase 연동)
+      const [user, setUser] = useState(null);
+      const [globalHoF, setGlobalHoF] = useState([]);
+
+      useEffect(() => {
+        if (!isFirebaseConfigured || !auth) return;
+        const initAuth = async () => {
+          try {
+             if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                 await auth.signInWithCustomToken(__initial_auth_token);
+             } else {
+                 await auth.signInAnonymously();
+             }
+          } catch (err) { 
+            console.error("Firebase Auth Error:", err);
+            setUseFirebase(false); 
+          }
+        };
+        initAuth();
+        const unsubscribe = auth.onAuthStateChanged(setUser);
+        return () => unsubscribe && unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!useFirebase || !user || !db) return;
+        const hofRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('hof');
+        const unsubHoF = hofRef.onSnapshot((snap) => {
+            let records = [];
+            snap.forEach(d => records.push(d.data()));
+            records.sort((a, b) => ((b.incredibleWins || 0) + (b.mpWins || 0)) - ((a.incredibleWins || 0) + (a.mpWins || 0)));
+            setGlobalHoF(records);
+        }, (err) => console.error("Global HoF Fetch Error:", err));
+
+        return () => unsubHoF && unsubHoF();
+      }, [user, useFirebase]);
+
+      // 4. 싱글 플레이 (SP) 상태
+      const [spPhase, setSpPhase] = useState('playing'); 
+      const [spDifficulty, setSpDifficulty] = useState('legend'); 
+      const [spStage, setSpStage] = useState(1);
+      const [spPlayerHp, setSpPlayerHp] = useState(3);
+      const [spDealerHp, setSpDealerHp] = useState(3);
+      const [spPlayerItems, setSpPlayerItems] = useState([]);
+      const [spDealerItems, setSpDealerItems] = useState([]);
+      const [spShells, setSpShells] = useState([]);
+      const [spTurn, setSpTurn] = useState('player'); 
+      const [spLogs, setSpLogs] = useState([]);
+      const [spActionInProgress, setSpActionInProgress] = useState(false);
+      const [spDoubleDamage, setSpDoubleDamage] = useState(false);
+      const [spDealerKnows, setSpDealerKnows] = useState(false); 
+      const [spStealMode, setSpStealMode] = useState(false); // 아드레날린 사용 시 상태
+      
+      const spStateRef = useRef({ spShells, spTurn, spPlayerHp, spDealerHp, spPlayerItems, spDealerItems, spDoubleDamage, spStage, spDealerKnows, spDifficulty });
+      useEffect(() => { spStateRef.current = { spShells, spTurn, spPlayerHp, spDealerHp, spPlayerItems, spDealerItems, spDoubleDamage, spStage, spDealerKnows, spDifficulty }; });
+
+      // 5. 멀티 플레이 (MP) PeerJS 상태
+      const [joinCodeInput, setJoinCodeInput] = useState('');
+      const [myId, setMyId] = useState('');
+      const [isHost, setIsHost] = useState(false);
+      
+      const peerRef = useRef(null);
+      const connsRef = useRef({}); 
+      const hostRoomCodeRef = useRef('');
+      const mpGameOverProcessedRef = useRef(''); 
+
+      const [mpState, setMpState] = useState({
+        phase: 'menu', hostId: '', roomCode: '', gameId: '', players: [],
+        settings: normalizeMpSettings(DEFAULT_MP_SETTINGS), maxPlayers: getMpMaxPlayers(DEFAULT_MP_SETTINGS),
+        turnId: '', shells: [], doubleDamage: false, logs: [], itemsDealt: false
+      });
+      const mpStateRef = useRef(mpState);
+      useEffect(() => { mpStateRef.current = mpState; }, [mpState]);
+
+      const [mpStealTarget, setMpStealTarget] = useState(null); // {targetId: string}
+      const [mpAdrenalineActive, setMpAdrenalineActive] = useState(false);
+
+      // 자동 스크롤
+      useEffect(() => { if(appMode === 'sp') spLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [spLogs, appMode]);
+      useEffect(() => { if(appMode === 'mp') mpLogEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [mpState.logs, appMode]);
+
+      // MP 승패 처리
+      useEffect(() => {
+         if (appMode === 'mp' && mpState.phase === 'gameover' && mpState.gameId && profile) {
+             if (mpGameOverProcessedRef.current === mpState.gameId) return;
+             mpGameOverProcessedRef.current = mpState.gameId;
+
+             const myPlayer = mpState.players.find(p => p.id === myId);
+             if (!myPlayer) return;
+
+             const alive = mpState.players.filter(p => !p.isDead);
+             let isWin = false;
+             let isDraw = false;
+
+             if ((mpState.settings?.mode || 'ffa') === 'ffa') {
+                 if (alive.length === 1 && alive[0].id === myId) isWin = true;
+                 else if (alive.length === 0) isDraw = true;
+             } else {
+                 const aliveTeams = new Set(alive.map(p => p.team));
+                 if (aliveTeams.size === 1) {
+                     if (myPlayer.team === [...aliveTeams][0]) isWin = true;
+                 } else if (aliveTeams.size === 0) isDraw = true;
+             }
+
+             if (!isDraw) {
+                 if (isWin) incrementStat('mpWins');
+                 else incrementStat('mpLosses');
+             }
+         }
+         if (mpState.phase === 'lobby') mpGameOverProcessedRef.current = '';
+      }, [mpState.phase, mpState.gameId, mpState.settings?.mode, mpState.players, myId, appMode, profile?.name]);
+
+      const triggerSharedAnim = (event) => {
+        if (!event) return;
+        if (event.type === 'SHOOT' && event.shell === 'live') {
+           setAnimState('shake');
+           setTimeout(() => setAnimState(null), 400);
+        } else if (event.type === 'ITEM' && ITEM_DICT[event.item]) {
+           setActiveItemAnim(ITEM_DICT[event.item].icon);
+           setTimeout(() => setActiveItemAnim(null), 1200);
+        }
+      };
+
+      const addSpLog = (msg) => {
+         if (msg) setSpLogs(prev => [...prev, msg]);
+      };
+
+      // ==========================================
+      // ===== SINGLE PLAYER (SP) AI LOGIC ========
+      // ==========================================
+      useEffect(() => {
+        if (appMode !== 'sp' || spPhase !== 'playing' || spTurn !== 'dealer' || spActionInProgress || spPlayerHp <= 0 || spDealerHp <= 0) return;
+        if (!spStateRef.current.spShells || spStateRef.current.spShells.length === 0) return;
+
+        let delay = 1000;
+        if (spStateRef.current.spDifficulty === 'incredible') delay = Math.floor(Math.random() * 200) + 400; 
+        else if (spStateRef.current.spDifficulty === 'legend') delay = Math.floor(Math.random() * 300) + 600; 
+        else if (spStateRef.current.spDifficulty === 'expert') delay = Math.floor(Math.random() * 400) + 700; 
+        else delay = Math.floor(Math.random() * 600) + 1200; 
+
+        const timer = setTimeout(() => {
+          const { spDealerItems, spPlayerItems, spShells, spDoubleDamage, spDealerHp, spDealerKnows, spDifficulty, spStage, spPlayerHp: php } = spStateRef.current;
+          
+          if (!spShells || spShells.length === 0) return;
+
+          const liveCount = spShells.filter(s => s === 'live').length;
+          const blankCount = spShells.length - liveCount;
+          const nextShell = spShells[0]; 
+          
+          const safeStageConfig = STAGE_CONFIG[spStage] || STAGE_CONFIG[1];
+          const maxHp = safeStageConfig.maxHp || 3;
+          
+          let cheatLive = false; let cheatBlank = false;
+          if (['expert', 'legend', 'incredible'].includes(spDifficulty) && !spDealerKnows && liveCount > 0 && blankCount > 0) {
+              // Incredible: 100% cheat probability (knows future perfectly)
+              let cheatProb = spDifficulty === 'incredible' ? 1.0 : (spDifficulty === 'legend' ? 0.65 : 0.5);
+              if (Math.random() < cheatProb) { cheatLive = (nextShell === 'live'); cheatBlank = (nextShell === 'blank'); }
+          }
+          
+          const isNextLiveCertain = (spDealerKnows && nextShell === 'live') || (blankCount === 0 && liveCount > 0) || cheatLive;
+          const isNextBlankCertain = (spDealerKnows && nextShell === 'blank') || (liveCount === 0 && blankCount > 0) || cheatBlank;
+          const hasStealable = (spPlayerItems || []).some(i => i && i.type !== 'adr');
+
+          if (spDealerItems && spDealerItems.filter(Boolean).length > 0) {
+            const adrIdx = spDealerItems.findIndex(i => i && i.type === 'adr');
+            const cigIdx = spDealerItems.findIndex(i => i && i.type === 'cig');
+            const glassIdx = spDealerItems.findIndex(i => i && i.type === 'glass');
+            const sawIdx = spDealerItems.findIndex(i => i && i.type === 'saw');
+            const beerIdx = spDealerItems.findIndex(i => i && i.type === 'beer');
+
+            if (spDifficulty === 'legend' || spDifficulty === 'incredible') {
+              if (cigIdx !== -1 && spDealerHp > 1 && spDealerHp < maxHp) { handleSpItemUse(cigIdx, false); return; }
+              if (adrIdx !== -1 && hasStealable) { handleSpItemUse(adrIdx, false); return; }
+              if (spDoubleDamage && isNextBlankCertain && beerIdx !== -1) { handleSpItemUse(beerIdx, false); return; }
+              if (!isNextLiveCertain && !isNextBlankCertain && glassIdx !== -1 && liveCount > 0 && blankCount > 0) { handleSpItemUse(glassIdx, false); return; }
+              let intendedTarget = isNextLiveCertain ? 'player' : (isNextBlankCertain ? 'dealer' : (liveCount >= blankCount ? 'player' : 'dealer'));
+              if (intendedTarget === 'player' && sawIdx !== -1 && !spDoubleDamage && php > 1) { handleSpItemUse(sawIdx, false); return; }
+              if (beerIdx !== -1 && !isNextLiveCertain) { handleSpItemUse(beerIdx, false); return; }
+            }
+            else if (spDifficulty === 'expert') {
+              if (cigIdx !== -1 && spDealerHp > 1 && spDealerHp < maxHp) { handleSpItemUse(cigIdx, false); return; }
+              if (adrIdx !== -1 && hasStealable) { handleSpItemUse(adrIdx, false); return; }
+              if (spDoubleDamage && isNextBlankCertain && beerIdx !== -1) { handleSpItemUse(beerIdx, false); return; }
+              if (!isNextLiveCertain && !isNextBlankCertain && glassIdx !== -1 && liveCount > 0 && blankCount > 0) { handleSpItemUse(glassIdx, false); return; }
+              if (!spDoubleDamage && sawIdx !== -1 && php > 1 && isNextLiveCertain) { handleSpItemUse(sawIdx, false); return; }
+              if (!spDoubleDamage && sawIdx !== -1 && php > 1 && !isNextLiveCertain && !isNextBlankCertain && liveCount > blankCount) { handleSpItemUse(sawIdx, false); return; }
+              if (!isNextLiveCertain && !isNextBlankCertain && beerIdx !== -1 && blankCount >= liveCount && blankCount > 0) { handleSpItemUse(beerIdx, false); return; }
+            }
+            else if (spDifficulty === 'hard') {
+              if (cigIdx !== -1 && spDealerHp > 1 && spDealerHp < maxHp) { handleSpItemUse(cigIdx, false); return; }
+              if (adrIdx !== -1 && hasStealable && Math.random() < 0.8) { handleSpItemUse(adrIdx, false); return; }
+              if (!spDealerKnows && glassIdx !== -1 && liveCount > 0 && blankCount > 0 && Math.random() < 0.8) { handleSpItemUse(glassIdx, false); return; }
+              if (!spDoubleDamage && sawIdx !== -1 && isNextLiveCertain) { handleSpItemUse(sawIdx, false); return; }
+              if (beerIdx !== -1) {
+                 if (isNextBlankCertain && Math.random() < 0.5) { handleSpItemUse(beerIdx, false); return; }
+                 if (!spDealerKnows && blankCount > liveCount && Math.random() < 0.6) { handleSpItemUse(beerIdx, false); return; }
+              }
+            }
+          }
+
+          let target = 'player';
+          if (isNextLiveCertain) target = 'player'; 
+          else if (isNextBlankCertain) target = 'dealer'; 
+          else target = liveCount >= blankCount ? 'player' : 'dealer'; 
+
+          handleSpShoot(target, 'dealer');
+        }, delay); 
+
+        return () => clearTimeout(timer);
+      }, [appMode, spTurn, spActionInProgress, spPhase, spPlayerHp, spDealerHp]);
+
+      const startSpGame = (diff) => {
+        const safeDiff = diff || 'legend';
+        setAppMode('sp');
+        setSpDifficulty(safeDiff);
+        setSpStage(1);
+        
+        const safeConfig = STAGE_CONFIG[1] || { maxHp: 3 };
+        const max = safeConfig.maxHp;
+        
+        setSpPlayerHp(max);
+        setSpDealerHp(max);
+        setSpPlayerItems([]);
+        setSpDealerItems([]);
+        setSpLogs([`\n================================`, `🔥 [STAGE 1 시작 - ${safeDiff.toUpperCase()} MODE] 🔥`, `최대 체력: ${max} | 1스테이지는 아이템을 사용하지 않습니다.`, `================================\n`]);
+        setSpTurn('player');
+        setSpActionInProgress(true); 
+        setSpDoubleDamage(false);
+        setSpDealerKnows(false); 
+        setSpStealMode(false);
+        setSpPhase('playing'); 
+        
+        setTimeout(() => startSpRound(1, [], [], 'player'), 500);
+      };
+
+      const nextSpStage = () => {
+        const next = (spStage || 1) + 1;
+        setSpStage(next);
+        
+        const safeConfig = STAGE_CONFIG[next] || STAGE_CONFIG[1];
+        const max = safeConfig.maxHp || 3;
+        
+        setSpPlayerHp(max);
+        setSpDealerHp(max);
+        setSpPlayerItems([]);
+        setSpDealerItems([]);
+        setSpLogs([`\n================================`, `🔥 [STAGE ${next} 시작 - ${(spDifficulty || 'legend').toUpperCase()} MODE] 🔥`, `최대 체력: ${max} | 최대 아이템 소지: ${safeConfig.maxItems || 0}개`, `================================\n`]);
+        setSpTurn('player');
+        setSpActionInProgress(true); 
+        setSpDoubleDamage(false);
+        setSpDealerKnows(false); 
+        setSpPhase('playing'); 
+        setTimeout(() => startSpRound(next, [], [], 'player'), 500);
+      };
+
+      const startSpRound = (currentStage, pItems, dItems, nextTurn = 'player') => {
+        setSpActionInProgress(true);
+        const config = STAGE_CONFIG[currentStage] || STAGE_CONFIG[1];
+        const [minShells, maxShells] = config.shellsRange || [2, 4];
+        const total = Math.floor(Math.random() * (maxShells - minShells + 1)) + minShells;
+        const live = Math.floor(Math.random() * (total - 1)) + 1; 
+        const blank = total - live;
+
+        let initialShells = [...Array(live).fill('live'), ...Array(blank).fill('blank')];
+        let newShells = shuffleArray(initialShells);
+        
+        setSpShells(newShells);
+        setSpDoubleDamage(false);
+        setSpDealerKnows(false); 
+
+        const dealItems = (currentItems) => {
+            let newItems = [...(currentItems || [])].filter(Boolean); 
+            let given = 0;
+            while(newItems.length < (config.maxItems || 0) && given < (config.itemsPerRound || 0)) {
+                newItems.push({ type: getRandomItemType(), revealed: false, id: Math.random().toString() });
+                given++;
+            }
+            newItems.forEach(item => { if(item) item.revealed = false; });
+            let indices = newItems.map((_, i) => i);
+            shuffleArray(indices).slice(0, 2).forEach(idx => {
+                if(newItems[idx]) newItems[idx].revealed = true;
+            });
+            while (newItems.length < (config.maxItems || 0)) newItems.push(null);
+            return newItems;
+        };
+
+        setSpPlayerItems(dealItems(pItems));
+        setSpDealerItems(dealItems(dItems));
+
+        addSpLog(`\n--- 광대가 샷건을 장전합니다 ---`);
+        addSpLog(`실탄 ${live}발, 공포탄 ${blank}발`);
+        if (config.itemsPerRound > 0) {
+          addSpLog(`양측에 무작위 아이템이 지급되었습니다.`);
+          addSpLog(`서로의 아이템 중 무작위 2개가 공개되었습니다.`);
+        }
+        
+        setTimeout(() => {
+          setSpTurn(nextTurn);
+          if(nextTurn === 'dealer') addSpLog(`⚠️ 직전 턴 이월 규칙에 따라 광대가 선제 공격을 시작합니다!`);
+          setSpActionInProgress(false); 
+        }, 2000);
+      };
+
+      const handleSpShoot = (target, shooter) => {
+        if (spActionInProgress) return;
+        setSpActionInProgress(true); 
+
+        const shooterName = shooter === 'player' ? '당신' : '광대';
+        const targetName = target === 'player' ? '당신' : '광대';
+
+        addSpLog(`🔫 ${shooterName}이(가) ${targetName}을(를) 조준합니다...`);
+
+        setTimeout(() => {
+          const currentShells = spStateRef.current.spShells;
+          if (!currentShells || currentShells.length === 0) {
+            setSpActionInProgress(false); return;
+          }
+
+          const shell = currentShells[0];
+          const remaining = currentShells.slice(1);
+          const damage = spStateRef.current.spDoubleDamage ? 2 : 1;
+          
+          setSpShells(remaining);
+          setSpDoubleDamage(false);
+          setSpDealerKnows(false); 
+          
+          let nextPlayerHp = spStateRef.current.spPlayerHp;
+          let nextDealerHp = spStateRef.current.spDealerHp;
+
+          if (shell === 'live') {
+            const dmgText = damage === 2 ? ' (치명타!)' : '';
+            addSpLog(`💥 [실탄] 탕! ${targetName}이(가) ${damage}의 피해를 입습니다!${dmgText}`);
+            triggerSharedAnim({ type: 'SHOOT', shell: 'live' });
+
+            if (target === 'player') {
+              nextPlayerHp = Math.max(0, nextPlayerHp - damage);
+              setSpPlayerHp(nextPlayerHp);
+            } else {
+              nextDealerHp = Math.max(0, nextDealerHp - damage);
+              setSpDealerHp(nextDealerHp);
+            }
+          } else {
+            addSpLog(`💨 [공포탄] 찰칵. 빈 총소리만 울립니다.`);
+          }
+
+          setTimeout(() => {
+            if (nextPlayerHp <= 0) {
+              addSpLog('\n💀 당신은 사망했습니다... 광대의 승리입니다.');
+              setSpPhase('gameover');
+              incrementStat('spLosses');
+              setSpActionInProgress(false); 
+              return; 
+            } 
+            
+            if (nextDealerHp <= 0) {
+              if (spStateRef.current.spStage >= 3) {
+                addSpLog('\n🏆 광대가 완전히 쓰러졌습니다! 게임 클리어!');
+                setSpPhase('victory');
+                incrementStat('spWins');
+                
+                if (spStateRef.current.spDifficulty === 'legend') {
+                   updateProfile({ incredibleUnlocked: true });
+                } else if (spStateRef.current.spDifficulty === 'incredible') {
+                   incrementStat('incredibleWins');
+                }
+              } else {
+                addSpLog(`\n🎉 광대가 쓰러집니다... 스테이지 ${spStateRef.current.spStage} 클리어!`);
+                setSpPhase('stageClear');
+              }
+              setSpActionInProgress(false); 
+              return; 
+            }
+
+            let nextTurn = shooter;
+            if (shell === 'live') {
+              nextTurn = shooter === 'player' ? 'dealer' : 'player';
+            } else {
+              if (shooter === target) {
+                addSpLog(`✨ ${shooterName}은(는) 한 번 더 행동할 수 있습니다.`);
+                nextTurn = shooter;
+              } else {
+                nextTurn = shooter === 'player' ? 'dealer' : 'player';
+              }
+            }
+
+            if (remaining.length === 0) {
+              startSpRound(spStateRef.current.spStage, spStateRef.current.spPlayerItems, spStateRef.current.spDealerItems, nextTurn);
+            } else {
+              setSpTurn(nextTurn);
+              setSpActionInProgress(false); 
+            }
+          }, 1500);
+
+        }, 1000);
+      };
+
+      const handleSpItemUse = (itemIdx, isPlayer) => {
+        if (spActionInProgress) return;
+        const items = isPlayer ? [...spStateRef.current.spPlayerItems] : [...spStateRef.current.spDealerItems];
+        const item = items[itemIdx];
+        if (!item) return;
+
+        // 아드레날린 스틸 모드 진입
+        if (item.type === 'adr') {
+            const oppItems = isPlayer ? spStateRef.current.spDealerItems : spStateRef.current.spPlayerItems;
+            const hasStealable = oppItems.some(i => i && i.type !== 'adr');
+            if (!hasStealable) {
+                if (isPlayer) showToast("상대방에게 훔칠 아이템이 없습니다.");
+                return;
+            }
+            if (isPlayer) {
+                setSpStealMode(true);
+                showToast("훔칠 아이템을 선택하세요.");
+                return; // 대기
+            } else {
+                // AI 아드레날린 로직
+                const stealableIdx = oppItems.findIndex(i => i && i.type !== 'adr');
+                if (stealableIdx !== -1) {
+                    processSpItemUse(itemIdx, false, stealableIdx);
+                }
+                return;
+            }
+        }
+
+        processSpItemUse(itemIdx, isPlayer);
+      };
+
+      const processSpItemUse = (itemIdx, isPlayer, stealTargetIdx = -1) => {
+          setSpActionInProgress(true);
+          const items = isPlayer ? [...spStateRef.current.spPlayerItems] : [...spStateRef.current.spDealerItems];
+          const item = items[itemIdx];
+          const userName = isPlayer ? '당신' : '광대';
+
+          addSpLog(`🔧 ${userName}이(가) [${ITEM_DICT[item.type].name}]을(를) 사용합니다!`);
+          triggerSharedAnim({ type: 'ITEM', item: item.type });
+
+          // 아이템 소모
+          items[itemIdx] = null;
+          if (isPlayer) setSpPlayerItems(items);
+          else setSpDealerItems(items);
+          setSpStealMode(false);
+
+          setTimeout(() => {
+              const { spShells, spPlayerHp, spDealerHp, spStage } = spStateRef.current;
+              const maxHp = STAGE_CONFIG[spStage].maxHp;
+
+              if (item.type === 'glass') {
+                  const nextShell = spShells[0];
+                  addSpLog(`🔍 ${userName}이(가) 약실을 확인했습니다.`);
+                  if (isPlayer) showToast(`약실 안의 탄은 [${nextShell === 'live' ? '실탄' : '공포탄'}] 입니다!`);
+                  else setSpDealerKnows(true);
+              } 
+              else if (item.type === 'beer') {
+                  const popped = spShells[0];
+                  const remaining = spShells.slice(1);
+                  addSpLog(`🍺 찰칵. 약실에서 [${popped === 'live' ? '실탄' : '공포탄'}]이(가) 빠져나왔습니다.`);
+                  setSpShells(remaining);
+                  if (remaining.length === 0) {
+                      setTimeout(() => startSpRound(spStage, spStateRef.current.spPlayerItems, spStateRef.current.spDealerItems, spTurn), 1000);
+                      return; // Action remains in progress until round starts
+                  }
+              }
+              else if (item.type === 'cig') {
+                  addSpLog(`🚬 ${userName}이(가) 담배를 피우며 체력을 1 회복합니다.`);
+                  if (isPlayer) setSpPlayerHp(Math.min(maxHp, spPlayerHp + 1));
+                  else setSpDealerHp(Math.min(maxHp, spDealerHp + 1));
+              }
+              else if (item.type === 'saw') {
+                  addSpLog(`🪚 총열을 잘라냅니다! 다음 공격 피해량이 2로 증가합니다.`);
+                  setSpDoubleDamage(true);
+              }
+              else if (item.type === 'adr' && stealTargetIdx !== -1) {
+                  const oppItems = isPlayer ? [...spStateRef.current.spDealerItems] : [...spStateRef.current.spPlayerItems];
+                  const stolenItem = oppItems[stealTargetIdx];
+                  addSpLog(`⚡ 아드레날린! ${userName}이(가) 상대의 [${ITEM_DICT[stolenItem.type].name}]을(를) 훔쳐 바로 사용합니다!`);
+                  
+                  oppItems[stealTargetIdx] = null;
+                  if (isPlayer) setSpDealerItems(oppItems);
+                  else setSpPlayerItems(oppItems);
+
+                  // 훔친 아이템 즉시 사용 로직 (재귀)
+                  setTimeout(() => {
+                      // 일회성으로 가상 인벤토리에 넣고 사용처리
+                      const tempItems = isPlayer ? [...spStateRef.current.spPlayerItems] : [...spStateRef.current.spDealerItems];
+                      const emptySlot = tempItems.findIndex(i => i === null);
+                      let useIdx = emptySlot;
+                      if (emptySlot !== -1) {
+                          tempItems[emptySlot] = stolenItem;
+                      } else {
+                          tempItems.push(stolenItem);
+                          useIdx = tempItems.length - 1;
+                      }
+                      
+                      if (isPlayer) setSpPlayerItems(tempItems);
+                      else setSpDealerItems(tempItems);
+
+                      setTimeout(() => processSpItemUse(useIdx, isPlayer), 500);
+                  }, 1000);
+                  return; // 재귀 호출로 제어권 넘김
+              }
+
+              setSpActionInProgress(false);
+          }, 1500);
+      };
+
+      const handleSpStealClick = (oppIdx) => {
+          if (!spStealMode) return;
+          const oppItem = spDealerItems[oppIdx];
+          if (!oppItem || oppItem.type === 'adr') return;
+
+          const myAdrIdx = spPlayerItems.findIndex(i => i && i.type === 'adr');
+          if (myAdrIdx !== -1) {
+              processSpItemUse(myAdrIdx, true, oppIdx);
+          }
+      };
+
+
+      // ==========================================
+      // ===== MULTIPLAYER (MP) P2P LOGIC =========
+      // ==========================================
+            const initPeer = (onOpen) => {
+          const peer = new Peer();
+          peer.on('open', (id) => {
+              setMyId(id);
+              if (onOpen) onOpen(id);
+          });
+          peer.on('error', (err) => {
+              showToast("연결 오류: " + err.type);
+              console.error(err);
+          });
+          peerRef.current = peer;
+          return peer;
+      };
+
+      const createMpRoom = async () => {
+          if (!useFirebase || !db) {
+              showToast('Firebase 연결이 필요합니다.');
+              return;
+          }
+          setAppMode('mp');
+          const peer = initPeer(async (id) => {
+              setIsHost(true);
+
+              let code = '';
+              let created = false;
+              for (let attempt = 0; attempt < 12 && !created; attempt++) {
+                  code = generateRoomCode();
+                  const roomRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rooms').doc(code);
+                  try {
+                      const snap = await roomRef.get();
+                      if (!snap.exists) {
+                          await roomRef.set({
+                              code,
+                              hostId: id,
+                              hostName: profile.name,
+                              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                              status: 'open'
+                          });
+                          created = true;
+                      }
+                  } catch (err) {
+                      console.error('Room create error:', err);
+                  }
+              }
+
+              if (!created) {
+                  showToast('방 코드 생성에 실패했습니다. 다시 시도해주세요.');
+                  setAppMode('menu');
+                  if (peerRef.current) peerRef.current.destroy();
+                  return;
+              }
+
+              hostRoomCodeRef.current = code;
+              const safeSettings = normalizeMpSettings(DEFAULT_MP_SETTINGS);
+              const initialPlayer = getInitialMpPlayer(id, profile.name, safeSettings, 'A');
+              const newState = {
+                  phase: 'lobby', hostId: id, roomCode: code, gameId: '',
+                  players: [initialPlayer], settings: safeSettings, maxPlayers: getMpMaxPlayers(safeSettings),
+                  turnId: '', shells: [], doubleDamage: false, logs: [], itemsDealt: false
+              };
+              setMpState(newState);
+
+              peer.on('connection', (conn) => {
+                  conn.on('data', (data) => handlePeerData(data, conn.peer));
+                  conn.on('open', () => {
+                      connsRef.current[conn.peer] = conn;
+                  });
+                  conn.on('close', () => {
+                      delete connsRef.current[conn.peer];
+                      handlePlayerLeave(conn.peer);
+                  });
+              });
+          });
+      };
+
+      const joinMpRoom = async () => {
+          const normalizedJoinCode = joinCodeInput.trim().toUpperCase();
+          if (!normalizedJoinCode) return;
+          if (!useFirebase || !db) {
+              showToast('Firebase 연결이 필요합니다.');
+              return;
+          }
+
+          let hostId = '';
+          try {
+              const roomRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rooms').doc(normalizedJoinCode);
+              const roomSnap = await roomRef.get();
+              if (!roomSnap.exists) {
+                  showToast('존재하지 않는 입장 코드입니다.');
+                  return;
+              }
+              const roomData = roomSnap.data() || {};
+              if (roomData.status && roomData.status !== 'open') {
+                  showToast('이미 닫힌 방입니다.');
+                  return;
+              }
+              hostId = roomData.hostId;
+              if (!hostId) {
+                  showToast('방 정보가 올바르지 않습니다.');
+                  return;
+              }
+          } catch (err) {
+              console.error('Room join lookup error:', err);
+              showToast('입장 코드 확인 중 오류가 발생했습니다.');
+              return;
+          }
+
+          setAppMode('mp');
+          const peer = initPeer((id) => {
+              setIsHost(false);
+              const conn = peer.connect(hostId);
+              conn.on('open', () => {
+                  connsRef.current[hostId] = conn;
+                  conn.send({ type: 'JOIN_REQUEST', player: { id, name: profile.name } });
+              });
+              conn.on('data', (data) => handlePeerData(data, hostId));
+              conn.on('close', () => {
+                  showToast('호스트와 연결이 끊어졌습니다.');
+                  setAppMode('menu');
+              });
+          });
+      };
+
+      const cleanupHostedRoom = async () => {
+          if (!useFirebase || !db || !hostRoomCodeRef.current) return;
+          const code = hostRoomCodeRef.current;
+          hostRoomCodeRef.current = '';
+          try {
+              await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('rooms').doc(code).delete();
+          } catch (err) {
+              console.error('Room cleanup error:', err);
+          }
+      };
+
+      const updateHostLobbySettings = (partial) => {
+          if (!isHost) return;
+          let s = { ...mpStateRef.current };
+          const merged = normalizeMpSettings({ ...(s.settings || DEFAULT_MP_SETTINGS), ...partial });
+          const newMaxPlayers = getMpMaxPlayers(merged);
+
+          if (merged.mode === 'teams') {
+              if (s.players.length > newMaxPlayers) {
+                  showToast('현재 인원보다 작은 팀전 최대 인원으로는 바꿀 수 없습니다.');
+                  return;
+              }
+              s.players = s.players.map((player, idx) => ({ ...player, team: TEAM_KEYS[idx % merged.teamCount] }));
+          } else {
+              if (s.players.length > merged.playerCap) {
+                  showToast('현재 인원보다 작은 최대 인원으로는 바꿀 수 없습니다.');
+                  return;
+              }
+              s.players = s.players.map((player, idx) => ({ ...player, team: TEAM_KEYS[idx % TEAM_KEYS.length] }));
+          }
+
+          s.settings = merged;
+          s.maxPlayers = newMaxPlayers;
+          broadcastMpState(s);
+      };
+
+      const broadcastMpState = (state) => {
+          if (!isHost) return;
+          Object.values(connsRef.current).forEach(conn => {
+              if (conn.open) conn.send({ type: 'STATE_UPDATE', state });
+          });
+          setMpState(state); // Update local host UI
+      };
+
+      const mpLog = (msg, stateObj) => {
+          const s = stateObj || mpStateRef.current;
+          s.logs = [...s.logs, msg];
+          return s;
+      };
+
+      const handlePlayerLeave = (peerId) => {
+          if (!isHost) return;
+          let s = { ...mpStateRef.current };
+          s.players = s.players.filter(p => p.id !== peerId);
+          broadcastMpState(s);
+      };
+
+      const handlePeerData = (data, senderId) => {
+          if (isHost) {
+              // Host handles incoming actions and updates state
+              let s = { ...mpStateRef.current };
+              
+              if (data.type === 'JOIN_REQUEST') {
+                  if (s.players.length >= s.maxPlayers || s.phase !== 'lobby') {
+                      if(connsRef.current[senderId]) connsRef.current[senderId].send({ type: 'ERROR', msg: '방이 꽉 찼거나 이미 시작되었습니다.' });
+                      return;
+                  }
+                  const settings = normalizeMpSettings(s.settings);
+                  const assignedTeam = assignTeamForLobby(s.players, settings);
+                  const newPlayer = getInitialMpPlayer(data.player.id, data.player.name, settings, assignedTeam);
+                  s.players.push(newPlayer);
+                  broadcastMpState(s);
+              }
+              else if (data.type === 'ACTION' && s.phase === 'playing') {
+                  if (senderId !== s.turnId) return; // Not their turn
+                  processMpAction(data.actionData, s);
+              }
+          } else {
+              // Client receives state updates
+              if (data.type === 'STATE_UPDATE') {
+                  setMpState(data.state);
+              } else if (data.type === 'ERROR') {
+                  showToast(data.msg);
+                  setAppMode('menu');
+              } else if (data.type === 'ANIMATION') {
+                  triggerSharedAnim(data.animEvent);
+              } else if (data.type === 'TOAST') {
+                  showToast(data.msg);
+              }
+          }
+      };
+
+      const startMpGame = () => {
+          if (!isHost) return;
+          let s = { ...mpStateRef.current };
+          const settings = normalizeMpSettings(s.settings);
+          s.phase = 'playing';
+          s.gameId = Date.now().toString();
+          s.settings = settings;
+          s.maxPlayers = getMpMaxPlayers(settings);
+          s.players.forEach(p => {
+              p.hp = settings.maxHp;
+              p.items = Array(settings.maxItems).fill(null);
+              p.isDead = false;
+          });
+          s.logs = ['🔥 게임 시작! 🔥'];
+          s.turnId = s.players[0].id;
+          s = mpLog(`모드: ${settings.mode === 'teams' ? `${settings.teamCount}팀 / 팀당 ${settings.playersPerTeam}명 / 최대 ${settings.teamPlayerCap}명` : `개인전 (${settings.playerCap}명)`}`, s);
+          s = mpLog(`설정: 체력 ${settings.maxHp}, 아이템 ${settings.itemsEnabled ? '활성화' : '비활성화'}, 최대 아이템 ${settings.maxItems}`, s);
+          s = mpLog(`첫 번째 턴: ${s.players[0].name}`, s);
+
+          startMpRound(s);
+      };
+
+      const startMpRound = (currentState) => {
+          let s = { ...currentState };
+          const settings = normalizeMpSettings(s.settings);
+          const minS = settings.shellMin, maxS = settings.shellMax;
+          const total = Math.floor(Math.random() * (maxS - minS + 1)) + minS;
+          const live = Math.floor(Math.random() * (total - 1)) + 1;
+          const blank = total - live;
+
+          s.shells = shuffleArray([...Array(live).fill('live'), ...Array(blank).fill('blank')]);
+          s.doubleDamage = false;
+
+          if (settings.itemsEnabled && settings.maxItems > 0 && settings.itemsPerRound > 0) {
+              s.players.forEach(p => {
+                  if (p.isDead) return;
+                  let given = 0;
+                  for (let i = 0; i < settings.maxItems && given < settings.itemsPerRound; i++) {
+                      if (!p.items[i]) {
+                          p.items[i] = { type: getRandomItemType(), id: Math.random().toString() };
+                          given++;
+                      }
+                  }
+              });
+          }
+
+          s = mpLog(`\n=== 🔫 샷건 장전 완료 ===`, s);
+          s = mpLog(`실탄 ${live}발, 공포탄 ${blank}발`, s);
+          if (settings.itemsEnabled && settings.maxItems > 0 && settings.itemsPerRound > 0) {
+              s = mpLog(`아이템 지급: 생존자당 ${settings.itemsPerRound}개`, s);
+          } else {
+              s = mpLog(`아이템 비활성화`, s);
+          }
+          broadcastMpState(s);
+      };
+
+      const processMpAction = (actionData, state) => {
+          let s = { ...state };
+          const actor = s.players.find(p => p.id === s.turnId);
+          if (!actor) return;
+
+          if (actionData.type === 'SHOOT') {
+              const target = s.players.find(p => p.id === actionData.targetId);
+              if (!target) return;
+
+              const shell = s.shells[0];
+              s.shells = s.shells.slice(1);
+              const dmg = s.doubleDamage ? 2 : 1;
+              s.doubleDamage = false;
+
+              s = mpLog(`🔫 ${actor.name}이(가) ${target.name}을(를) 조준합니다...`, s);
+
+              if (shell === 'live') {
+                  const dmgText = dmg === 2 ? ' (치명타!)' : '';
+                  s = mpLog(`💥 [실탄] 탕! ${target.name} 피해 ${dmg}${dmgText}`, s);
+                  target.hp = Math.max(0, target.hp - dmg);
+                  
+                  // Broadcast animation
+                  Object.values(connsRef.current).forEach(conn => { if (conn.open) conn.send({ type: 'ANIMATION', animEvent: { type: 'SHOOT', shell: 'live' } }); });
+                  if(isHost) triggerSharedAnim({ type: 'SHOOT', shell: 'live' });
+
+                  if (target.hp === 0) {
+                      target.isDead = true;
+                      s = mpLog(`💀 ${target.name} 사망!`, s);
+                  }
+                  
+                  if (checkMpGameOver(s)) return;
+                  s.turnId = getNextAlivePlayer(s, s.turnId);
+
+              } else {
+                  s = mpLog(`💨 [공포탄] 찰칵.`, s);
+                  if (actor.id === target.id) {
+                      s = mpLog(`✨ ${actor.name} 추가 턴!`, s);
+                  } else {
+                      s.turnId = getNextAlivePlayer(s, s.turnId);
+                  }
+              }
+
+              if (s.shells.length === 0) {
+                  startMpRound(s);
+              } else {
+                  broadcastMpState(s);
+              }
+
+          } else if (actionData.type === 'ITEM') {
+              const settings = normalizeMpSettings(s.settings);
+              if (!settings.itemsEnabled) return;
+              const itemIdx = actionData.itemIdx;
+              const item = actor.items[itemIdx];
+              if (!item) return;
+
+              actor.items[itemIdx] = null; // consume
+              s = mpLog(`🔧 ${actor.name} - [${ITEM_DICT[item.type].name}] 사용`, s);
+
+              // Broadcast item anim
+              Object.values(connsRef.current).forEach(conn => { if (conn.open) conn.send({ type: 'ANIMATION', animEvent: { type: 'ITEM', item: item.type } }); });
+              if(isHost) triggerSharedAnim({ type: 'ITEM', item: item.type });
+
+              if (item.type === 'glass') {
+                  const nextShell = s.shells[0];
+                  if (connsRef.current[actor.id]) connsRef.current[actor.id].send({ type: 'TOAST', msg: `약실: [${nextShell === 'live' ? '실탄' : '공포탄'}]` });
+                  else if (actor.id === myId) showToast(`약실: [${nextShell === 'live' ? '실탄' : '공포탄'}]`);
+                  s = mpLog(`🔍 ${actor.name}이(가) 약실을 확인했습니다.`, s);
+              } 
+              else if (item.type === 'beer') {
+                  const popped = s.shells[0];
+                  s.shells = s.shells.slice(1);
+                  s = mpLog(`🍺 찰칵. 약실에서 [${popped === 'live' ? '실탄' : '공포탄'}] 배출.`, s);
+                  if (s.shells.length === 0) {
+                      startMpRound(s);
+                      return;
+                  }
+              }
+              else if (item.type === 'cig') {
+                  actor.hp = Math.min(normalizeMpSettings(s.settings).maxHp, actor.hp + 1);
+                  s = mpLog(`🚬 ${actor.name} 체력 1 회복.`, s);
+              }
+              else if (item.type === 'saw') {
+                  s.doubleDamage = true;
+                  s = mpLog(`🪚 ${actor.name} 다음 피해량 2배!`, s);
+              }
+              else if (item.type === 'adr') {
+                  const targetP = s.players.find(p => p.id === actionData.targetId);
+                  const stealIdx = actionData.stealItemIdx;
+                  if (targetP && targetP.items[stealIdx]) {
+                      const stolen = targetP.items[stealIdx];
+                      targetP.items[stealIdx] = null;
+                      
+                      // Put in actor's inv, or substitute directly.
+                      // For simplicity, we execute it directly via recursion
+                      s = mpLog(`⚡ ${actor.name}이(가) ${targetP.name}의 [${ITEM_DICT[stolen.type].name}] 훔침!`, s);
+                      
+                      const emptySlot = actor.items.findIndex(i => i === null);
+                      let newIdx = emptySlot;
+                      if(emptySlot !== -1) { actor.items[emptySlot] = stolen; }
+                      else { actor.items.push(stolen); newIdx = actor.items.length - 1; }
+                      
+                      broadcastMpState(s);
+                      
+                      // Auto-use stolen item after brief delay
+                      setTimeout(() => {
+                          const action = { type: 'ITEM', itemIdx: newIdx };
+                          processMpAction(action, mpStateRef.current);
+                      }, 1000);
+                      return;
+                  }
+              }
+              broadcastMpState(s);
+          }
+      };
+
+      const getNextAlivePlayer = (state, currentId) => {
+          const idx = state.players.findIndex(p => p.id === currentId);
+          let nextIdx = (idx + 1) % state.players.length;
+          while (state.players[nextIdx].isDead) {
+              nextIdx = (nextIdx + 1) % state.players.length;
+          }
+          return state.players[nextIdx].id;
+      };
+
+      const checkMpGameOver = (state) => {
+          const alive = state.players.filter(p => !p.isDead);
+          let isOver = false;
+
+          if ((state.settings?.mode || 'ffa') === 'ffa') {
+              if (alive.length <= 1) isOver = true;
+          } else {
+              const aliveTeams = new Set(alive.map(p => p.team));
+              if (aliveTeams.size <= 1) isOver = true;
+          }
+
+          if (isOver) {
+              state.phase = 'gameover';
+              state = mpLog(`\n🏆 게임 종료!`, state);
+              if ((state.settings?.mode || 'ffa') === 'ffa') {
+                  if (alive.length === 1) state = mpLog(`🎉 최후의 생존자: ${alive[0].name}`, state);
+                  else state = mpLog(`무승부!`, state);
+              } else {
+                  if (alive.length > 0) state = mpLog(`🎉 승리 팀: 팀 ${alive[0].team}`, state);
+                  else state = mpLog(`무승부!`, state);
+              }
+              broadcastMpState(state);
+              return true;
+          }
+          return false;
+      };
+
+      const sendMpAction = (actionData) => {
+          if (isHost) {
+              processMpAction(actionData, mpStateRef.current);
+          } else {
+              connsRef.current[mpState.hostId].send({ type: 'ACTION', actionData });
+          }
+      };
+
+      const handleMpItemClick = (idx) => {
+          if (mpState.phase !== 'playing' || mpState.turnId !== myId || !mpState.settings?.itemsEnabled) return;
+          const myP = mpState.players.find(p => p.id === myId);
+          const item = myP.items[idx];
+          if (!item) return;
+
+          if (item.type === 'adr') {
+              // Check if others have items
+              const othersHave = mpState.players.some(p => !p.isDead && p.id !== myId && p.items.some(i => i && i.type !== 'adr'));
+              if(!othersHave) {
+                  showToast("훔칠 아이템이 없습니다."); return;
+              }
+              setMpAdrenalineActive(true);
+              showToast("상대의 아이템을 클릭하여 훔치세요.");
+          } else {
+              sendMpAction({ type: 'ITEM', itemIdx: idx });
+          }
+      };
+
+      const handleMpStealClick = (targetId, itemIdx) => {
+          if (!mpAdrenalineActive) return;
+          const myP = mpState.players.find(p => p.id === myId);
+          const adrIdx = myP.items.findIndex(i => i && i.type === 'adr');
+          if (adrIdx !== -1) {
+              sendMpAction({ type: 'ITEM', itemIdx: adrIdx, targetId, stealItemIdx: itemIdx });
+          }
+          setMpAdrenalineActive(false);
+      };
+
+      // ==========================================
+      // ===== UI COMPONENTS ======================
+      // ==========================================
+
+      // 1. Menu & Login
+      if (appMode === 'menu') {
+          if (!profile) {
+              return (
+                  <div className="h-full w-full overflow-y-auto scrollbar-hide relative z-10">
+                      <div className="flex flex-col items-center justify-center min-h-full max-w-4xl mx-auto p-4 py-8">
+                          <h1 className="text-5xl font-black-han text-red-700 mb-6 tracking-widest text-center anim-shake text-shadow-blood">
+                              BUCKSHOT ROULETTE
+                          </h1>
+                          
+                          <div className="bg-[#0a0a0a] border border-red-950 panel-blood-border p-8 rounded w-full max-w-md relative">
+                              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-900 via-red-600 to-red-900 opacity-50"></div>
+                              <h2 className="text-xl font-bold mb-2 text-center text-neutral-300 tracking-wider">로그인</h2>
+                              <p className="text-center text-xs text-neutral-600 mb-6">회원가입은 아래 버튼을 눌러 별도 창에서 진행합니다.</p>
+                              
+                              <input type="text" placeholder="닉네임" value={loginInput} onChange={e=>setLoginInput(e.target.value)} className="w-full bg-[#050505] border border-neutral-800 p-4 rounded mb-3 text-white focus:outline-none focus:border-red-800 transition-colors placeholder-neutral-600" />
+                              <input type="password" placeholder="비밀번호" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} className="w-full bg-[#050505] border border-neutral-800 p-4 rounded mb-6 text-white focus:outline-none focus:border-red-800 transition-colors placeholder-neutral-600" onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+                              
+                              <div className="flex flex-col gap-3">
+                                  <button onClick={handleLogin} disabled={isLoggingIn} className="w-full bg-red-900 hover:bg-red-800 text-white font-bold py-3 rounded transition-colors disabled:opacity-50 border border-red-700 shadow-[0_0_10px_rgba(220,38,38,0.2)]">로그인</button>
+                                  <button onClick={()=>{ setRegisterNameInput(''); setRegisterPasswordInput(''); buildImageCaptcha(); setShowRegisterModal(true); }} disabled={isLoggingIn} className="w-full bg-neutral-800 hover:bg-neutral-700 text-white font-bold py-3 rounded transition-colors disabled:opacity-50 border border-neutral-700">회원가입 창 열기</button>
+                              </div>
+                          </div>
+
+                          {showRegisterModal && (
+                              <div className="fixed inset-0 bg-black/90 flex items-start justify-center z-50 p-4 sm:p-6 backdrop-blur-sm overflow-y-auto">
+                                  <div className="bg-[#0a0a0a] panel-blood-border p-6 rounded max-w-md w-full relative my-4 sm:my-8 max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto scrollbar-hide">
+                                      <button onClick={()=>setShowRegisterModal(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white">✕</button>
+                                      <h2 className="text-2xl font-bold mb-2 text-red-600 tracking-wider">회원가입</h2>
+                                      <p className="text-sm text-neutral-500 mb-5">새 닉네임과 비밀번호를 입력하세요.</p>
+                                      <input type="text" placeholder="새 닉네임" value={registerNameInput} onChange={e=>setRegisterNameInput(e.target.value)} className="w-full bg-[#050505] border border-neutral-800 p-4 rounded mb-3 text-white focus:outline-none focus:border-red-800 transition-colors placeholder-neutral-600" />
+                                      <input type="password" placeholder="새 비밀번호" value={registerPasswordInput} onChange={e=>setRegisterPasswordInput(e.target.value)} className="w-full bg-[#050505] border border-neutral-800 p-4 rounded mb-3 text-white focus:outline-none focus:border-red-800 transition-colors placeholder-neutral-600" />
+                                      <div className="bg-[#050505] border border-neutral-800 rounded p-4 mb-4">
+                                          <div className="flex items-start justify-between gap-3 mb-3">
+                                              <div>
+                                                  <p className="text-sm text-neutral-400">사람 확인</p>
+                                                  <p className="text-sm font-bold text-white mt-1">다음 9개의 이미지 중 <span className="text-red-400">{captchaTarget}</span>이 포함된 칸을 모두 고르시오.</p>
+                                              </div>
+                                              <button onClick={buildImageCaptcha} type="button" className="text-xs px-3 py-2 rounded bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 shrink-0">새 문제</button>
+                                          </div>
+                                          <div className="grid grid-cols-3 gap-2 mb-3">
+                                              {captchaTiles.map(tile => {
+                                                  const selected = captchaSelected.includes(tile.id);
+                                                  return (
+                                                      <button
+                                                          key={tile.id}
+                                                          type="button"
+                                                          onClick={() => toggleCaptchaTile(tile.id)}
+                                                          className={`relative aspect-square overflow-hidden rounded border transition-all ${selected ? 'border-red-500 ring-2 ring-red-500/60 scale-[0.98]' : 'border-neutral-700 hover:border-neutral-500'}`}
+                                                      >
+                                                          <img src={tile.src} alt={tile.label} className="w-full h-full object-cover pointer-events-none select-none" draggable="false" />
+                                                          <div className={`absolute inset-0 ${selected ? 'bg-red-500/15' : 'bg-transparent'}`}></div>
+                                                          <div className="absolute top-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/70 text-neutral-200">{tile.label}</div>
+                                                      </button>
+                                                  );
+                                              })}
+                                          </div>
+                                          <p className="text-xs text-neutral-500">모든 {captchaTarget} 칸을 정확히 선택해야 가입됩니다.</p>
+                                      </div>
+                                      <div className="flex gap-3">
+                                          <button onClick={()=>setShowRegisterModal(false)} className="flex-1 bg-neutral-900 hover:bg-neutral-800 text-white font-bold py-3 rounded transition-colors border border-neutral-700">취소</button>
+                                          <button onClick={handleRegister} disabled={isLoggingIn} className="flex-1 bg-red-900 hover:bg-red-800 text-white font-bold py-3 rounded transition-colors disabled:opacity-50 border border-red-700">가입하기</button>
+                                      </div>
+                                  </div>
+                              </div>
+                          )}
+                          
+                          <div className="mt-8 flex gap-6 text-neutral-500 font-bold tracking-wider">
+                              <button onClick={()=>setShowRules(true)} className="hover:text-red-400 transition-colors flex items-center gap-1"><InfoIcon size={16}/> 규칙</button>
+                              <button onClick={()=>setShowHoF(true)} className="hover:text-yellow-500 transition-colors flex items-center gap-1"><TrophyIcon size={16}/> 명예의 전당</button>
+                          </div>
+
+                          {/* Rules Modal */}
+                          {showRules && (
+                              <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                                  <div className="bg-[#0a0a0a] panel-blood-border p-6 rounded max-w-md w-full relative">
+                                      <button onClick={()=>setShowRules(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white">✕</button>
+                                      <h2 className="text-2xl font-bold mb-4 text-red-600 tracking-wider">게임 규칙</h2>
+                                      <ul className="list-disc pl-5 space-y-3 text-sm text-neutral-400">
+                                          <li>샷건에는 실탄과 공포탄이 무작위로 섞여 장전됩니다.</li>
+                                          <li>자신에게 쏴서 공포탄이면 추가 턴을 얻습니다.</li>
+                                          <li>아이템은 턴을 소모하지 않습니다.</li>
+                                          <li>체력이 0이 되면 패배하며 모든 것을 잃습니다.</li>
+                                          <li><strong className="text-red-400">싱글플레이:</strong> 3스테이지 연전. AI 광대와의 목숨을 건 승부. (레전드 클리어 시 인크레더블 모드 해금)</li>
+                                          <li><strong className="text-blue-400">멀티플레이:</strong> 코드를 공유해 최대 4명과 함께 대결합니다.</li>
+                                          <li><strong className="text-yellow-500">명예의 전당:</strong> 인크레더블 모드 클리어 및 멀티플레이 승리 시 등재됩니다.</li>
+                                      </ul>
+                                  </div>
+                              </div>
+                          )}
+                          
+                          {/* HoF Modal */}
+                          {showHoF && (
+                               <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                               <div className="bg-[#0a0a0a] border border-yellow-900/50 p-6 rounded max-w-md w-full relative shadow-[0_0_20px_rgba(161,98,7,0.2)]">
+                                   <button onClick={()=>setShowHoF(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white">✕</button>
+                                   <h2 className="text-2xl font-bold mb-6 text-yellow-600 flex items-center gap-2 tracking-widest"><TrophyIcon size={24}/> 명예의 전당</h2>
+                                   
+                                   <div className="space-y-6">
+                                       <div className="bg-neutral-900 p-4 rounded border border-neutral-800 text-center">
+                                           <h3 className="font-bold text-neutral-500 mb-2">나의 전적 ({profile ? profile.name : '비로그인'})</h3>
+                                           {profile ? (
+                                               <div className="text-neutral-300 text-sm space-y-1">
+                                                   <p>AI 대전: <span className="text-red-400 font-bold">{profile.spWins}승</span> {profile.spLosses}패 ({getWinRate(profile.spWins, profile.spLosses)})</p>
+                                                   <p>PvP: <span className="text-blue-400 font-bold">{profile.mpWins}승</span> {profile.mpLosses}패 ({getWinRate(profile.mpWins, profile.mpLosses)})</p>
+                                                   <p className="text-purple-400 text-xs mt-1">인크레더블 클리어: {profile.incredibleWins || 0}회</p>
+                                               </div>
+                                           ) : (
+                                               <p className="text-neutral-600 text-sm">로그인 후 확인 가능합니다.</p>
+                                           )}
+                                       </div>
+                                       
+                                       <div>
+                                           <h3 className="font-bold text-yellow-600 mb-3 border-b border-yellow-900/50 pb-2">글로벌 랭킹 TOP</h3>
+                                           {!useFirebase ? (
+                                               <p className="text-center text-neutral-600 py-6 text-sm">글로벌 서버에 연결할 수 없습니다.</p>
+                                           ) : globalHoF.length === 0 ? (
+                                               <p className="text-center text-neutral-600 py-6 text-sm">데이터가 없습니다.</p>
+                                           ) : (
+                                               <div className="space-y-2 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
+                                                   {globalHoF.map((r, i) => (
+                                                       <div key={i} className="flex justify-between items-center bg-black/50 p-3 rounded border border-neutral-800">
+                                                           <div className="flex items-center gap-3">
+                                                               <span className={`text-lg font-bold w-6 text-center ${i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-amber-600':'text-neutral-600'}`}>{i+1}</span>
+                                                               <span className="font-bold text-neutral-300">{r.name}</span>
+                                                           </div>
+                                                           <div className="text-right text-xs text-neutral-500">
+                                                               <div>INC <span className="text-purple-400 font-bold">{r.incredibleWins || 0}</span> | MP <span className="text-blue-400 font-bold">{r.mpWins || 0}</span></div>
+                                                           </div>
+                                                       </div>
+                                                   ))}
+                                               </div>
+                                           )}
+                                       </div>
+                                   </div>
+                               </div>
+                           </div>
+                          )}
+
+                          {toastMsg && <div className="fixed top-5 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 text-white px-6 py-3 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] font-bold z-50 tracking-wide">{toastMsg}</div>}
+                      </div>
+                  </div>
+              );
+          }
+
+          // === Logged In Menu (가로형 레이아웃 대응) ===
+          return (
+              <div key={authVersion + ":" + (profile?.name || "guest")} className="h-full w-full overflow-y-auto scrollbar-hide relative z-10 flex flex-col items-center p-4 py-6">
+                  <div className="w-full max-w-4xl flex justify-between items-center mb-6 bg-[#0a0a0a] p-3 rounded border border-neutral-900 shadow-md shrink-0">
+                      <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-neutral-900 border border-neutral-700 rounded flex items-center justify-center font-bold text-xl text-neutral-400">{profile.name.charAt(0)}</div>
+                          <div>
+                              <div className="font-bold tracking-wide text-neutral-200">{profile.name}</div>
+                              <div className="text-xs text-neutral-500 font-mono">
+                                  AI {profile.spWins}W {profile.spLosses}L | PvP {profile.mpWins}W {profile.mpLosses}L
+                              </div>
+                          </div>
+                      </div>
+                      <button onClick={()=>setShowLogoutConfirm(true)} className="p-2 text-neutral-600 hover:text-red-600 transition-colors rounded-full hover:bg-neutral-900"><LogOutIcon size={20}/></button>
+                  </div>
+
+                  <h1 className="text-4xl font-black-han text-red-700 mb-6 tracking-widest anim-shake text-shadow-blood text-center shrink-0">
+                      BUCKSHOT ROULETTE
+                  </h1>
+
+                  <div className="w-full max-w-4xl flex flex-col md:flex-row gap-6 shrink-0 min-h-0">
+                      {/* SP Panel */}
+                      <div className="flex-1 bg-[#0c0c0c] border border-red-900/40 p-6 rounded relative overflow-hidden group hover:border-red-700 transition-all shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+                          <div className="absolute top-0 left-0 w-1 h-full bg-red-800 transition-all group-hover:w-2"></div>
+                          <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-red-500 tracking-widest"><LockIcon size={20}/> SINGLE PLAYER</h2>
+                          
+                          {/* Hard -> Expert -> Legend 순서 */}
+                          <div className="grid grid-cols-2 gap-3 mt-4">
+                              <button onClick={()=>startSpGame('hard')} className="bg-[#050505] hover:bg-neutral-900 border border-neutral-800 p-3 rounded font-bold transition-colors text-neutral-400 hover:text-white shadow-md">Hard</button>
+                              <button onClick={()=>startSpGame('expert')} className="bg-[#050505] hover:bg-neutral-900 border border-neutral-800 p-3 rounded font-bold transition-colors text-neutral-400 hover:text-white shadow-md">Expert</button>
+                              
+                              <div className="col-span-2 flex flex-col gap-1 mt-2">
+                                  <button onClick={()=>startSpGame('legend')} className="bg-red-950/20 hover:bg-red-900/40 border border-red-900 p-4 rounded font-bold transition-colors text-red-400 hover:text-red-300 text-lg shadow-[0_0_10px_rgba(153,27,27,0.1)]">Legend</button>
+                                  <span className="text-xs text-neutral-600 text-center font-bold">클리어 시 Incredible 잠금 해제</span>
+                              </div>
+                              
+                              {/* Incredible 모드 (잠금 UI 추가) */}
+                              <div className="col-span-2 mt-2">
+                                  {profile.incredibleUnlocked ? (
+                                      <button onClick={()=>startSpGame('incredible')} className="w-full bg-purple-950/20 hover:bg-purple-900/40 border border-purple-900 p-3 rounded font-bold transition-colors text-purple-400 shadow-[0_0_10px_rgba(147,51,234,0.1)]">Incredible (해금됨)</button>
+                                  ) : (
+                                      <button disabled className="w-full bg-[#050505] border border-neutral-900 p-3 rounded font-bold transition-colors text-neutral-700 opacity-50 cursor-not-allowed flex items-center justify-center gap-2">
+                                          <LockIcon size={16}/> Incredible
+                                      </button>
+                                  )}
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* MP Panel */}
+                      <div className="flex-1 bg-[#0c0c0c] border border-blue-900/40 p-6 rounded relative overflow-hidden group hover:border-blue-700 transition-all shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col justify-between">
+                          <div className="absolute top-0 left-0 w-1 h-full bg-blue-800 transition-all group-hover:w-2"></div>
+                          <div>
+                              <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-500 tracking-widest"><UsersIcon size={20}/> MULTIPLAYER</h2>
+                              <p className="text-neutral-500 text-sm mb-6">친구와 코드를 공유하여 데스게임을 진행하세요.</p>
+                          </div>
+                          
+                          <div className="flex flex-col gap-4 mt-auto">
+                              <button onClick={createMpRoom} className="w-full bg-blue-950/30 hover:bg-blue-900/50 border border-blue-900 p-4 rounded font-bold transition-colors text-blue-400 text-lg shadow-md">방 만들기 (호스트)</button>
+                              <div className="flex gap-2">
+                                  <input type="text" placeholder="호스트 입장 코드 전체" value={joinCodeInput} onChange={e=>setJoinCodeInput(e.target.value)} className="flex-1 bg-[#050505] border border-neutral-800 p-3 rounded text-center uppercase tracking-widest focus:outline-none focus:border-blue-700 placeholder-neutral-700 text-white font-mono" />
+                                  <button onClick={joinMpRoom} disabled={!joinCodeInput} className="bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 border border-neutral-700 p-3 rounded font-bold transition-colors px-6 text-neutral-300 shadow-md">입장</button>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <div className="mt-8 flex gap-8 text-neutral-600 font-bold tracking-wider text-sm mb-4 shrink-0">
+                      <button onClick={()=>setShowRules(true)} className="hover:text-red-500 transition-colors flex items-center gap-2"><InfoIcon size={16}/> 규칙</button>
+                      <button onClick={()=>setShowHoF(true)} className="hover:text-yellow-600 transition-colors flex items-center gap-2"><TrophyIcon size={16}/> 명예의 전당</button>
+                  </div>
+
+                  {toastMsg && <div className="fixed top-5 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 text-white px-6 py-3 rounded shadow-[0_10px_30px_rgba(0,0,0,0.8)] font-bold z-50 animate-bounce tracking-wide">{toastMsg}</div>}
+
+                  {showLogoutConfirm && (
+                      <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+                          <div className="bg-[#0a0a0a] p-6 rounded max-w-sm w-full text-center border border-neutral-800 shadow-2xl">
+                              <h3 className="text-xl font-bold text-red-600 mb-2">경고</h3>
+                              <p className="mb-8 text-neutral-400">정말 테이블을 떠나시겠습니까?</p>
+                              <div className="flex gap-3 justify-center">
+                                  <button onClick={executeLogout} className="flex-1 bg-red-900 py-3 rounded font-bold hover:bg-red-800 transition-colors border border-red-800 text-white">예</button>
+                                  <button onClick={()=>setShowLogoutConfirm(false)} className="flex-1 bg-neutral-800 py-3 rounded font-bold hover:bg-neutral-700 transition-colors border border-neutral-700 text-white">아니오</button>
+                              </div>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Rules and HoF Modals */}
+                  {showRules && (
+                      <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                          <div className="bg-[#0a0a0a] panel-blood-border p-6 rounded max-w-md w-full relative">
+                              <button onClick={()=>setShowRules(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white">✕</button>
+                              <h2 className="text-2xl font-bold mb-4 text-red-600 tracking-wider">게임 규칙</h2>
+                              <ul className="list-disc pl-5 space-y-3 text-sm text-neutral-400">
+                                  <li>샷건에는 실탄과 공포탄이 무작위로 섞여 장전됩니다.</li>
+                                  <li>자신에게 쏴서 공포탄이면 추가 턴을 얻습니다.</li>
+                                  <li>아이템은 턴을 소모하지 않습니다.</li>
+                                  <li>체력이 0이 되면 패배하며 모든 것을 잃습니다.</li>
+                                  <li><strong className="text-red-400">싱글플레이:</strong> 3스테이지 연전. AI 광대와의 목숨을 건 승부. (레전드 클리어 시 인크레더블 모드 해금)</li>
+                                  <li><strong className="text-blue-400">멀티플레이:</strong> 코드를 공유해 최대 4명과 함께 대결합니다.</li>
+                                  <li><strong className="text-yellow-500">명예의 전당:</strong> 인크레더블 모드 클리어 및 멀티플레이 승리 시 등재됩니다.</li>
+                              </ul>
+                          </div>
+                      </div>
+                  )}
+                  {showHoF && (
+                       <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                       <div className="bg-[#0a0a0a] border border-yellow-900/50 p-6 rounded max-w-md w-full relative shadow-[0_0_20px_rgba(161,98,7,0.2)]">
+                           <button onClick={()=>setShowHoF(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white">✕</button>
+                           <h2 className="text-2xl font-bold mb-6 text-yellow-600 flex items-center gap-2 tracking-widest"><TrophyIcon size={24}/> 명예의 전당</h2>
+                           <div className="space-y-6">
+                               <div className="bg-neutral-900 p-4 rounded border border-neutral-800 text-center">
+                                   <h3 className="font-bold text-neutral-500 mb-2">나의 전적 ({profile.name})</h3>
+                                   <div className="text-neutral-300 text-sm space-y-1">
+                                       <p>AI 대전: <span className="text-red-400 font-bold">{profile.spWins}승</span> {profile.spLosses}패 ({getWinRate(profile.spWins, profile.spLosses)})</p>
+                                       <p>PvP: <span className="text-blue-400 font-bold">{profile.mpWins}승</span> {profile.mpLosses}패 ({getWinRate(profile.mpWins, profile.mpLosses)})</p>
+                                       <p className="text-purple-400 text-xs mt-1">인크레더블 클리어: {profile.incredibleWins || 0}회</p>
+                                   </div>
+                               </div>
+                               <div>
+                                   <h3 className="font-bold text-yellow-600 mb-3 border-b border-yellow-900/50 pb-2">글로벌 랭킹 TOP</h3>
+                                   {!useFirebase ? (
+                                       <p className="text-center text-neutral-600 py-6 text-sm">글로벌 서버에 연결할 수 없습니다.</p>
+                                   ) : globalHoF.length === 0 ? (
+                                       <p className="text-center text-neutral-600 py-6 text-sm">데이터가 없습니다.</p>
+                                   ) : (
+                                       <div className="space-y-2 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
+                                           {globalHoF.map((r, i) => (
+                                               <div key={i} className="flex justify-between items-center bg-black/50 p-3 rounded border border-neutral-800">
+                                                   <div className="flex items-center gap-3">
+                                                       <span className={`text-lg font-bold w-6 text-center ${i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-amber-600':'text-neutral-600'}`}>{i+1}</span>
+                                                       <span className="font-bold text-neutral-300">{r.name}</span>
+                                                   </div>
+                                                   <div className="text-right text-xs text-neutral-500">
+                                                       <div>INC <span className="text-purple-400 font-bold">{r.incredibleWins || 0}</span> | MP <span className="text-blue-400 font-bold">{r.mpWins || 0}</span></div>
+                                                   </div>
+                                               </div>
+                                           ))}
+                                       </div>
+                                   )}
+                               </div>
+                           </div>
+                       </div>
+                   </div>
+                  )}
+              </div>
+          );
+      }
+
+      // UI Helpers
+      const renderHearts = (hp, max) => (
+          <div className="flex gap-1">
+              {[...Array(max)].map((_, i) => (
+                  <div key={i} className={`w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-sm ${i < hp ? 'bg-red-600 shadow-[0_0_5px_red]' : 'bg-neutral-900 border border-neutral-800'}`}>
+                      {i < hp && <ZapIcon size={12} className="text-white sm:w-4 sm:h-4" />}
+                  </div>
+              ))}
+          </div>
+      );
+
+      // 2. Single Player UI (가로형 레이아웃 좌/중/우 배치)
+      if (appMode === 'sp') {
+          return (
+              <div className={`h-full w-full flex flex-col relative z-10 ${animState ? 'anim-shake' : ''}`}>
+                  {/* Top Bar */}
+                  <div className="bg-[#050505] border-b border-red-900/50 p-2 sm:p-3 flex justify-between items-center z-10 shrink-0">
+                      <div className="font-black text-red-600 tracking-widest text-shadow-blood flex items-center gap-4">
+                          <span>STAGE {spStage}</span>
+                          <span className="text-xs sm:text-sm text-neutral-600 uppercase tracking-widest hidden sm:block border-l border-neutral-800 pl-4">Difficulty: {spDifficulty}</span>
+                      </div>
+                      <button onClick={()=>setAppMode('menu')} className="text-neutral-600 hover:text-red-500 text-sm font-bold transition-colors">포기</button>
+                  </div>
+
+                  {/* 메인 게임 영역 (가로 모드 최적화: 좌/중/우) */}
+                  <div className="flex-1 flex flex-row min-h-0 bg-[#050505]">
+                      
+                      {/* Player Section (Left) */}
+                      <div className="w-[30%] sm:w-1/3 bg-[#080808] flex flex-col items-center justify-center p-2 sm:p-4 relative shadow-[inset_-30px_0_50px_rgba(0,0,0,0.8)] border-r border-neutral-900 overflow-y-auto">
+                          <div className="flex-1 w-full flex flex-col items-center justify-center">
+                              {/* Player Items */}
+                              <div className="flex flex-wrap justify-center gap-1 sm:gap-2 mb-4 sm:mb-8">
+                                  {[...Array(STAGE_CONFIG[spStage].maxItems)].map((_, i) => {
+                                      const item = spPlayerItems[i];
+                                      return (
+                                          <button key={i} onClick={() => handleSpItemUse(i, true)} disabled={!item || spTurn !== 'player' || spActionInProgress || spStealMode} className={`w-10 h-10 sm:w-14 sm:h-14 rounded border flex items-center justify-center transition-all shadow-md ${item ? 'bg-[#111] border-neutral-600 hover:bg-neutral-800 hover:border-white active:scale-95' : 'bg-transparent border-neutral-800'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                                              {item && <span className={ITEM_DICT[item.type]?.color}>{ITEM_DICT[item.type]?.icon}</span>}
+                                          </button>
+                                      );
+                                  })}
+                              </div>
+
+                              <div className="mb-2">{renderHearts(spPlayerHp, STAGE_CONFIG[spStage].maxHp)}</div>
+                              <div className="text-neutral-400 font-bold tracking-widest text-sm sm:text-lg mb-6">{profile.name}</div>
+
+                              {/* Action Buttons (가로배치) */}
+                              {spPhase === 'playing' && (
+                                  <div className="w-full flex flex-col sm:flex-row gap-2 px-2 max-w-[240px]">
+                                      <button onClick={() => handleSpShoot('dealer', 'player')} disabled={spTurn !== 'player' || spActionInProgress || spStealMode} className="flex-1 bg-red-950/80 hover:bg-red-900 text-red-200 font-bold py-3 sm:py-4 rounded disabled:opacity-30 transition-all border border-red-800 active:scale-95 shadow-[0_0_15px_rgba(220,38,38,0.2)] text-xs sm:text-base">광대 조준</button>
+                                      <button onClick={() => handleSpShoot('player', 'player')} disabled={spTurn !== 'player' || spActionInProgress || spStealMode} className="flex-1 bg-[#111] hover:bg-neutral-800 text-neutral-300 font-bold py-3 sm:py-4 rounded disabled:opacity-30 transition-all border border-neutral-700 active:scale-95 text-xs sm:text-sm">자신 조준</button>
+                                  </div>
+                              )}
+
+                              {/* Steal Mode Cancel */}
+                              {spStealMode && (
+                                  <button onClick={()=>setSpStealMode(false)} className="mt-4 bg-purple-900/80 border border-purple-500 px-4 py-2 sm:px-8 sm:py-3 rounded text-purple-100 font-bold animate-pulse shadow-[0_0_15px_rgba(168,85,247,0.4)] text-xs sm:text-base">도둑질 취소</button>
+                              )}
+                          </div>
+                      </div>
+
+                      {/* Center Log / Status Area */}
+                      <div className="flex-1 flex flex-col relative shadow-[inset_0_0_20px_rgba(0,0,0,1)] bg-[#030303] overflow-hidden">
+                          {/* Scanline overlay for log */}
+                          <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)]" style={{backgroundSize: '100% 4px'}}></div>
+                          
+                          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2 font-mono text-xs sm:text-sm scrollbar-hide text-neutral-400 relative z-10 leading-relaxed">
+                              {spLogs.map((log, i) => <div key={i} className={`${log.includes('💥') ? 'text-red-400 font-bold' : log.includes('🏆') || log.includes('🎉') ? 'text-blue-400 font-bold' : log.includes('⚠️') ? 'text-yellow-500' : ''}`}>{log}</div>)}
+                              <div ref={spLogEndRef} />
+                          </div>
+                          
+                          {/* 현재 턴 표시 이펙트 */}
+                          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 opacity-50 pointer-events-none">
+                                {spTurn === 'player' ? <div className="text-red-500 font-bold tracking-widest animate-pulse border border-red-900 bg-red-950/30 px-4 py-1 rounded">PLAYER TURN</div> : <div className="text-neutral-500 font-bold tracking-widest animate-pulse border border-neutral-800 bg-neutral-900/30 px-4 py-1 rounded">DEALER TURN</div>}
+                          </div>
+                      </div>
+
+                      {/* Dealer Section (Right) */}
+                      <div className="w-[30%] sm:w-1/3 bg-[#020202] flex flex-col items-center justify-center p-2 sm:p-4 relative shadow-[inset_30px_0_50px_rgba(0,0,0,0.8)] border-l border-neutral-900 overflow-y-auto">
+                          <div className="flex-1 w-full flex flex-col items-center justify-center">
+                              <div className="text-red-900 mb-4 font-black tracking-widest text-xs sm:text-lg flex flex-col items-center drop-shadow-[0_0_8px_rgba(220,38,38,0.3)]">
+                                  <span className="text-4xl sm:text-6xl mb-2 grayscale opacity-90 drop-shadow-[0_0_15px_rgba(220,38,38,0.8)]">🤡</span>
+                                  THE DEALER
+                              </div>
+                              <div className="mb-2">{renderHearts(spDealerHp, STAGE_CONFIG[spStage].maxHp)}</div>
+                              
+                              {/* Dealer Items */}
+                              <div className="flex flex-wrap justify-center gap-1 sm:gap-2 mt-4 sm:mt-8">
+                                  {[...Array(STAGE_CONFIG[spStage].maxItems)].map((_, i) => {
+                                      const item = spDealerItems[i];
+                                      return (
+                                          <div key={i} onClick={() => handleSpStealClick(i)} className={`w-10 h-10 sm:w-14 sm:h-14 rounded bg-[#050505] border border-neutral-800 flex items-center justify-center shadow-inner ${spStealMode && item && item.type !== 'adr' ? 'cursor-pointer border-purple-600 hover:bg-purple-950/40 animate-pulse shadow-[0_0_10px_rgba(147,51,234,0.4)]' : ''}`}>
+                                              {item && (item.revealed || item.type !== 'unknown' ? <span className={ITEM_DICT[item.type]?.color || 'text-white'}>{ITEM_DICT[item.type]?.icon || '?'}</span> : <span className="text-neutral-800 font-bold">?</span>)}
+                                          </div>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Modals */}
+                  {spPhase === 'stageClear' && (
+                      <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center z-30 backdrop-blur-sm">
+                          <h2 className="text-5xl font-black text-red-600 mb-8 tracking-widest text-shadow-blood">STAGE CLEAR</h2>
+                          <button onClick={nextSpStage} className="bg-transparent border-2 border-red-600 text-red-500 hover:bg-red-900/30 hover:text-white font-bold px-10 py-4 rounded transition-all text-xl tracking-widest">다음 스테이지</button>
+                      </div>
+                  )}
+                  {spPhase === 'gameover' && (
+                      <div className="absolute inset-0 bg-red-950/95 flex flex-col items-center justify-center z-30 backdrop-blur-md">
+                          <h2 className="text-7xl font-black-han text-red-600 mb-4 tracking-widest text-shadow-blood">YOU DIED</h2>
+                          <p className="text-red-300/70 mb-10 text-lg tracking-widest">광대가 승리했습니다...</p>
+                          <button onClick={()=>setAppMode('menu')} className="bg-black border border-red-800 text-red-500 font-bold px-12 py-4 rounded hover:bg-red-900 hover:text-white transition-colors text-xl tracking-widest shadow-[0_0_20px_rgba(220,38,38,0.3)]">메뉴로</button>
+                      </div>
+                  )}
+                  {spPhase === 'victory' && (
+                      <div className="absolute inset-0 bg-blue-950/95 flex flex-col items-center justify-center z-30 backdrop-blur-md">
+                          <h2 className="text-6xl font-black-han text-blue-500 mb-4 tracking-widest drop-shadow-[0_0_15px_rgba(59,130,246,0.8)]">VICTORY</h2>
+                          <p className="text-blue-200/70 mb-10 text-lg tracking-widest">무사히 살아남았습니다.</p>
+                          <button onClick={()=>setAppMode('menu')} className="bg-black border border-blue-800 text-blue-400 font-bold px-12 py-4 rounded hover:bg-blue-900 hover:text-white transition-colors text-xl tracking-widest shadow-[0_0_20px_rgba(59,130,246,0.3)]">메뉴로</button>
+                      </div>
+                  )}
+
+                  {/* Floating Item Animation */}
+                  {activeItemAnim && (
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+                          <div className="bg-black/80 p-8 rounded-full anim-item-popup border border-white/10 backdrop-blur-md shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+                              {activeItemAnim}
+                          </div>
+                      </div>
+                  )}
+                  
+                  {toastMsg && <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 text-white px-6 py-2 rounded shadow-2xl font-bold z-50 tracking-wide">{toastMsg}</div>}
+              </div>
+          );
+      }
+
+      // 3. Multiplayer UI (가로형 레이아웃 대응 좌/중/우 배치)
+      if (appMode === 'mp') {
+          return (
+              <div className={`h-full w-full flex flex-col relative z-10 ${animState ? 'anim-shake' : ''} ${mpAdrenalineActive ? 'targeting-mode' : ''}`}>
+                  {/* MP Top Bar */}
+                  <div className="bg-[#050505] border-b border-blue-900/50 p-2 sm:p-3 flex justify-between items-center shrink-0 z-20 relative">
+                      <div className="font-bold flex gap-4">
+                          <span className="text-blue-500 break-all drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]">ROOM CODE: {mpState.roomCode}</span>
+                          <span className="text-neutral-600 hidden sm:inline tracking-widest">MULTIPLAYER</span>
+                      </div>
+                      <button onClick={async ()=>{
+                          if(isHost) await cleanupHostedRoom();
+                          if(peerRef.current) peerRef.current.destroy();
+                          setAppMode('menu');
+                      }} className="text-neutral-500 hover:text-red-500 text-sm transition-colors font-bold">나가기</button>
+                  </div>
+
+                  {mpState.phase === 'lobby' ? (
+                      <div className="flex-1 w-full overflow-y-auto scrollbar-hide relative z-10">
+                          <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 text-center">
+                          <h2 className="text-4xl font-black-han text-blue-600 mb-2 tracking-widest drop-shadow-[0_0_10px_rgba(59,130,246,0.4)]">대기실</h2>
+                          <p className="text-neutral-500 mb-10">입장 코드(6자리): <span className="text-blue-300 font-mono font-bold text-lg ml-2 break-all inline-block bg-blue-900/30 px-3 py-1 rounded border border-blue-800">{mpState.roomCode}</span></p>
+                          
+                          <div className="w-full mb-6 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                              <div className="bg-[#060606] border border-neutral-800 rounded p-3"><div className="text-neutral-500 mb-1">게임 모드</div><div className="font-bold text-white">{mpState.settings?.mode === 'teams' ? '팀전' : '개인전'}</div></div>
+                              <div className="bg-[#060606] border border-neutral-800 rounded p-3"><div className="text-neutral-500 mb-1">최대 인원</div><div className="font-bold text-white">{mpState.maxPlayers}명</div></div>
+                              <div className="bg-[#060606] border border-neutral-800 rounded p-3"><div className="text-neutral-500 mb-1">아이템</div><div className="font-bold text-white">{mpState.settings?.itemsEnabled ? '활성화' : '비활성화'}</div></div>
+                              <div className="bg-[#060606] border border-neutral-800 rounded p-3"><div className="text-neutral-500 mb-1">최대 체력</div><div className="font-bold text-white">{mpState.settings?.maxHp}</div></div>
+                              <div className="bg-[#060606] border border-neutral-800 rounded p-3"><div className="text-neutral-500 mb-1">최대 아이템 칸</div><div className="font-bold text-white">{mpState.settings?.maxItems}</div></div>
+                              <div className="bg-[#060606] border border-neutral-800 rounded p-3"><div className="text-neutral-500 mb-1">탄 수 범위</div><div className="font-bold text-white">{mpState.settings?.shellMin}~{mpState.settings?.shellMax}</div></div>
+                          </div>
+
+                          {isHost && (
+                              <div className="w-full mb-8 bg-[#050505] border border-blue-900/40 rounded-xl p-4 text-left max-h-[52dvh] overflow-y-auto scrollbar-hide">
+                                  <h3 className="text-blue-400 font-bold mb-4 tracking-wide">방 설정</h3>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <label className="text-sm">
+                                          <div className="text-neutral-400 mb-1">게임 모드</div>
+                                          <select value={mpState.settings?.mode || 'ffa'} onChange={e=>updateHostLobbySettings({ mode: e.target.value })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                              <option value="ffa">개인전</option>
+                                              <option value="teams">팀전</option>
+                                          </select>
+                                      </label>
+
+                                      {mpState.settings?.mode === 'teams' ? (
+                                          <>
+                                              <label className="text-sm">
+                                                  <div className="text-neutral-400 mb-1">팀 개수</div>
+                                                  <select value={mpState.settings?.teamCount || 2} onChange={e=>updateHostLobbySettings({ teamCount: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                                      {[2,3,4].map(n => <option key={n} value={n}>{n}팀</option>)}
+                                                  </select>
+                                              </label>
+                                              <label className="text-sm">
+                                                  <div className="text-neutral-400 mb-1">팀당 인원</div>
+                                                  <select value={mpState.settings?.playersPerTeam || 2} onChange={e=>updateHostLobbySettings({ playersPerTeam: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                                      {[1,2,3,4].map(n => <option key={n} value={n}>{n}명</option>)}
+                                                  </select>
+                                              </label>
+                                              <label className="text-sm sm:col-span-2">
+                                                  <div className="text-neutral-400 mb-1">팀전 최대 인원</div>
+                                                  <select value={mpState.settings?.teamPlayerCap || getMpMaxPlayers(mpState.settings || DEFAULT_MP_SETTINGS)} onChange={e=>updateHostLobbySettings({ teamPlayerCap: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                                      {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}명</option>)}
+                                                  </select>
+                                                  <div className="text-xs text-neutral-500 mt-1">팀전 최대 인원은 최대 8명까지 설정 가능</div>
+                                              </label>
+                                          </>
+                                      ) : (
+                                          <label className="text-sm">
+                                              <div className="text-neutral-400 mb-1">최대 인원</div>
+                                              <select value={mpState.settings?.playerCap || 4} onChange={e=>updateHostLobbySettings({ playerCap: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                                  {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}명</option>)}
+                                              </select>
+                                          </label>
+                                      )}
+
+                                      <label className="text-sm">
+                                          <div className="text-neutral-400 mb-1">최대 체력</div>
+                                          <select value={mpState.settings?.maxHp || 4} onChange={e=>updateHostLobbySettings({ maxHp: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                              {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                                          </select>
+                                      </label>
+
+                                      <label className="text-sm">
+                                          <div className="text-neutral-400 mb-1">최대 아이템 칸</div>
+                                          <select value={mpState.settings?.maxItems || 4} onChange={e=>updateHostLobbySettings({ maxItems: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                              {[0,1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}칸</option>)}
+                                          </select>
+                                      </label>
+
+                                      <label className="text-sm">
+                                          <div className="text-neutral-400 mb-1">아이템 사용</div>
+                                          <select value={mpState.settings?.itemsEnabled ? 'on' : 'off'} onChange={e=>updateHostLobbySettings({ itemsEnabled: e.target.value === 'on' })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                              <option value="on">활성화</option>
+                                              <option value="off">비활성화</option>
+                                          </select>
+                                      </label>
+
+                                      <label className="text-sm">
+                                          <div className="text-neutral-400 mb-1">라운드당 아이템 지급</div>
+                                          <select value={mpState.settings?.itemsPerRound || 0} onChange={e=>updateHostLobbySettings({ itemsPerRound: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white" disabled={!mpState.settings?.itemsEnabled || (mpState.settings?.maxItems || 0) === 0}>
+                                              {[0,1,2,3,4].filter(n => n <= (mpState.settings?.maxItems || 0)).map(n => <option key={n} value={n}>{n}개</option>)}
+                                          </select>
+                                      </label>
+
+                                      <label className="text-sm">
+                                          <div className="text-neutral-400 mb-1">최소 장전 수</div>
+                                          <select value={mpState.settings?.shellMin || 3} onChange={e=>updateHostLobbySettings({ shellMin: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                              {[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}발</option>)}
+                                          </select>
+                                      </label>
+
+                                      <label className="text-sm">
+                                          <div className="text-neutral-400 mb-1">최대 장전 수</div>
+                                          <select value={mpState.settings?.shellMax || 8} onChange={e=>updateHostLobbySettings({ shellMax: Number(e.target.value) })} className="w-full bg-black border border-neutral-700 rounded px-3 py-2 text-white">
+                                              {[3,4,5,6,7,8,9,10].filter(n => n >= (mpState.settings?.shellMin || 3)).map(n => <option key={n} value={n}>{n}발</option>)}
+                                          </select>
+                                      </label>
+                                  </div>
+                              </div>
+                          )}
+
+                          <div className="w-full space-y-3 mb-10">
+                              {mpState.players.map((p, i) => (
+                                  <div key={i} className={`p-4 rounded border flex justify-between items-center shadow-md ${p.id === myId ? 'bg-[#0a0a0a] border-blue-800/50' : 'bg-[#050505] border-neutral-800'}`}>
+                                      <div className="flex items-center gap-4">
+                                          <div className={`w-4 h-4 rounded-full ${TEAM_COLORS[p.team]?.bg.replace('/30','')} border-2 ${TEAM_COLORS[p.team]?.border} shadow-[0_0_8px_${TEAM_COLORS[p.team]?.text}]`}></div>
+                                          <span className={`font-bold text-lg tracking-wide ${p.id === myId ? 'text-white' : 'text-neutral-300'}`}>{p.name} {p.id === myId && '(나)'}</span>
+                                          <span className="text-xs bg-neutral-900 border border-neutral-700 text-neutral-300 px-2 py-1 rounded ml-1 font-bold">팀 {p.team}</span>
+                                          {p.id === mpState.hostId && <span className="text-xs bg-yellow-950 border border-yellow-800 text-yellow-500 px-2 py-1 rounded ml-2 font-bold">HOST</span>}
+                                      </div>
+                                  </div>
+                              ))}
+                              {[...Array(mpState.maxPlayers - mpState.players.length)].map((_, i) => (
+                                  <div key={`empty-${i}`} className="p-4 rounded border border-dashed border-neutral-800 bg-[#020202] text-neutral-700 text-left tracking-widest">
+                                      대기 중...
+                                  </div>
+                              ))}
+                          </div>
+
+                          {isHost ? (
+                              <button onClick={startMpGame} disabled={mpState.players.length < 2} className="w-full bg-blue-900 hover:bg-blue-800 text-blue-100 font-bold py-4 rounded disabled:opacity-30 transition-all text-lg border border-blue-700 shadow-[0_0_15px_rgba(30,58,138,0.5)]">게임 시작</button>
+                          ) : (
+                              <div className="text-neutral-500 animate-pulse border border-neutral-800 p-4 rounded w-full bg-[#050505]">호스트가 게임을 시작하기를 기다리고 있습니다...</div>
+                          )}
+                          </div>
+                      </div>
+                  ) : (
+                      // MP Playing UI (가로형)
+                      <div className="flex-1 flex flex-row min-h-0 bg-[#020202] relative z-10">
+                          
+                          {/* My Player Area (Left) */}
+                          <div className={`w-[30%] sm:w-1/3 p-2 sm:p-5 relative transition-colors border-r border-neutral-900 overflow-y-auto flex flex-col items-center justify-center ${mpState.turnId === myId ? 'bg-[#0a0a0a] shadow-[inset_-50px_0_100px_rgba(0,0,0,0.8)]' : 'bg-[#050505] shadow-[inset_-50px_0_100px_rgba(0,0,0,1)]'}`}>
+                              {(() => {
+                                  const me = mpState.players.find(p => p.id === myId);
+                                  if (!me) return null;
+                                  return (
+                                      <div className="w-full max-w-[240px] mx-auto flex flex-col items-center">
+                                          {mpState.turnId === myId && !me.isDead && (
+                                              <div className="absolute top-2 left-2 right-2 text-xs font-bold text-red-500 animate-pulse border border-red-900/50 bg-red-950/30 px-3 py-1 rounded tracking-widest text-center">내 턴</div>
+                                          )}
+                                          
+                                          <div className="flex flex-wrap justify-center gap-1 sm:gap-2 mb-4 sm:mb-8 mt-6">
+                                              {me.items.map((item, idx) => (
+                                                  <button key={idx} onClick={() => handleMpItemClick(idx)} disabled={!item || mpState.turnId !== myId || me.isDead || mpAdrenalineActive} className={`w-10 h-10 sm:w-14 sm:h-14 rounded border flex items-center justify-center transition-all shadow-md ${item ? 'bg-[#111] border-neutral-600 hover:bg-neutral-800 hover:border-white active:scale-95' : 'bg-transparent border-neutral-800'} disabled:opacity-30 disabled:cursor-not-allowed`}>
+                                                      {item && <span className={ITEM_DICT[item.type]?.color}>{ITEM_DICT[item.type]?.icon}</span>}
+                                                  </button>
+                                              ))}
+                                          </div>
+                                          
+                                          <div className="w-full flex flex-col items-center justify-center mb-4">
+                                              {renderHearts(me.hp, mpState.settings?.maxHp || DEFAULT_MP_SETTINGS.maxHp)}
+                                              <div className="font-bold mt-2 tracking-widest text-neutral-300 text-sm sm:text-lg">{me.name} (나)</div>
+                                          </div>
+                                          
+                                          <button onClick={()=>sendMpAction({ type: 'SHOOT', targetId: myId })} disabled={mpState.turnId !== myId || me.isDead || mpAdrenalineActive} className="w-full bg-[#111] hover:bg-neutral-800 border border-neutral-700 px-4 py-3 sm:py-4 rounded font-bold transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed text-neutral-400 hover:text-white shadow-md text-xs sm:text-sm">
+                                              자신 쏘기 (턴 확보)
+                                          </button>
+                                          
+                                          {mpAdrenalineActive && (
+                                              <button onClick={()=>setMpAdrenalineActive(false)} className="mt-4 bg-purple-900/80 border border-purple-600 w-full py-2 sm:py-3 rounded text-purple-100 font-bold tracking-widest shadow-[0_0_15px_rgba(147,51,234,0.3)] animate-pulse text-xs sm:text-sm">
+                                                  도둑질 취소
+                                              </button>
+                                          )}
+                                      </div>
+                                  );
+                              })()}
+                          </div>
+
+                          {/* MP Logs (Center) */}
+                          <div className="flex-1 bg-[#030303] flex flex-col relative shadow-[inset_0_0_20px_rgba(0,0,0,1)] overflow-hidden">
+                              <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)]" style={{backgroundSize: '100% 4px'}}></div>
+                              <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-xs sm:text-sm scrollbar-hide text-neutral-400 relative z-10 leading-relaxed">
+                                  {mpState.logs.map((log, i) => <div key={i} className={`${log.includes('💥') ? 'text-red-400 font-bold' : log.includes('🏆') ? 'text-blue-400 font-bold' : ''}`}>{log}</div>)}
+                                  <div ref={mpLogEndRef} />
+                              </div>
+                          </div>
+
+                          {/* Opponents Area (Grid - Right) */}
+                          <div className="w-[30%] sm:w-1/3 grid grid-cols-1 gap-2 p-2 sm:p-4 border-l border-neutral-900 auto-rows-[minmax(120px,auto)] overflow-y-auto bg-[#020202] shadow-[inset_30px_0_50px_rgba(0,0,0,1)]">
+                              {mpState.players.map(p => {
+                                  if (p.id === myId) return null;
+                                  const isTurn = p.id === mpState.turnId;
+                                  return (
+                                      <div key={p.id} className={`relative flex flex-col items-center justify-center p-2 sm:p-4 rounded-lg border bg-[#050505] transition-all ${isTurn ? 'border-red-600 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'border-neutral-800'} ${p.isDead ? 'opacity-30 grayscale' : ''}`}>
+                                          <div className="text-xs sm:text-sm font-bold mb-2 truncate w-full text-center text-neutral-300 tracking-wider">{p.name}</div>
+                                          {renderHearts(p.hp, mpState.settings?.maxHp || DEFAULT_MP_SETTINGS.maxHp)}
+                                          
+                                          <div className="flex flex-wrap justify-center gap-1 mt-3">
+                                              {p.items.map((item, idx) => (
+                                                  <div key={idx} onClick={() => handleMpStealClick(p.id, idx)} className={`w-6 h-6 sm:w-8 sm:h-8 rounded bg-[#0a0a0a] border flex items-center justify-center ${mpAdrenalineActive && item && item.type !== 'adr' && !p.isDead ? 'border-purple-600 cursor-pointer animate-pulse bg-purple-950/40 shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'border-neutral-800'}`}>
+                                                      {item ? <span className={ITEM_DICT[item.type]?.color}>{ITEM_DICT[item.type]?.icon}</span> : ''}
+                                                  </div>
+                                              ))}
+                                          </div>
+                                          
+                                          {!p.isDead && mpState.turnId === myId && !mpAdrenalineActive && (
+                                              <button onClick={()=>sendMpAction({ type: 'SHOOT', targetId: p.id })} className="absolute inset-0 w-full h-full opacity-0 hover:opacity-100 bg-red-950/90 flex items-center justify-center font-bold text-red-200 transition-opacity z-10 rounded-lg backdrop-blur-sm tracking-widest text-sm sm:text-lg border border-red-800">
+                                                  조준 사격
+                                              </button>
+                                          )}
+                                      </div>
+                                  );
+                              })}
+                          </div>
+
+                          {/* MP Game Over Modal */}
+                          {mpState.phase === 'gameover' && (
+                              <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center z-50 p-4 text-center backdrop-blur-sm">
+                                  <h2 className="text-5xl font-black-han text-blue-600 mb-8 tracking-widest drop-shadow-[0_0_15px_rgba(37,99,235,0.5)]">GAME OVER</h2>
+                                  <div className="text-neutral-300 mb-10 max-w-sm text-lg font-bold leading-loose">
+                                      {mpState.logs.slice(-3).map((l, i) => <div key={i}>{l}</div>)}
+                                  </div>
+                                  <div className="flex gap-4">
+                                      {isHost && <button onClick={()=>broadcastMpState({ ...mpStateRef.current, phase: 'lobby' })} className="bg-blue-900/80 border border-blue-700 text-blue-200 px-8 py-4 rounded font-bold hover:bg-blue-800 transition-colors shadow-[0_0_15px_rgba(30,58,138,0.5)]">대기실로</button>}
+                                      <button onClick={()=>{ if(peerRef.current) peerRef.current.destroy(); setAppMode('menu'); }} className="bg-black border border-neutral-700 text-neutral-400 px-8 py-4 rounded font-bold hover:bg-neutral-900 hover:text-white transition-colors">메인 메뉴</button>
+                                  </div>
+                              </div>
+                          )}
+                      </div>
+                  )}
+
+                  {/* Shared Animations & Toasts */}
+                  {activeItemAnim && (
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+                          <div className="bg-black/80 p-8 rounded-full anim-item-popup border border-white/10 backdrop-blur-md shadow-[0_0_30px_rgba(255,255,255,0.1)]">{activeItemAnim}</div>
+                      </div>
+                  )}
+                  {toastMsg && <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-neutral-900 border border-neutral-700 text-white px-6 py-2 rounded shadow-2xl font-bold z-50 whitespace-nowrap tracking-wide">{toastMsg}</div>}
+              </div>
+          );
+      }
+
+      return null;
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
