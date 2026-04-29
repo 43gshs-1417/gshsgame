@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>종이 비행기의 꿈</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Montserrat:wght@200;300;400&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Gowun Dodum', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            touch-action: none;
+        }
+        .font-eng {
+            font-family: 'Montserrat', sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        /* 세련된 UI를 위한 스타일 */
+        .glass-ui {
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .fade-in { animation: fadeIn 1.5s ease-out forwards; }
+        .pulse-slow { animation: pulse 3s infinite; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="text-white select-none">
+
+    <!-- 게임 캔버스 -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI 레이어 -->
+    <div id="uiLayer" class="absolute inset-0 pointer-events-none flex flex-col justify-between">
+        
+        <!-- 지오메트리 대쉬 스타일 게이지 바 -->
+        <div id="progressBarContainer" class="absolute top-6 left-1/2 -translate-x-1/2 w-4/5 max-w-lg h-6 bg-black/60 border-2 border-white/80 rounded-full opacity-0 transition-opacity duration-1000 z-50 hidden overflow-hidden shadow-lg">
+            <div id="progressBar" class="h-full bg-gradient-to-r from-lime-400 to-green-500 w-0 transition-all duration-75"></div>
+            <div class="absolute inset-0 flex items-center justify-center">
+                <span id="progressText" class="text-white text-xs md:text-sm font-bold font-eng tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">0%</span>
+            </div>
+        </div>
+
+        <!-- 점수 및 난이도 표시 -->
+        <div id="scoreDisplay" class="p-8 text-xl md:text-2xl font-eng font-light tracking-widest opacity-0 transition-opacity duration-1000 text-white/90 drop-shadow-md flex justify-between mt-2">
+            <span id="scoreText">0 M</span>
+            <span id="levelText" class="text-sm text-pink-300">LEVEL 1</span>
+        </div>
+
+        <!-- 시작 화면 (디자인 개편) -->
+        <div id="startScreen" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto glass-ui transition-opacity duration-500">
+            <div class="mb-12 text-center fade-in">
+                <h1 class="text-5xl md:text-7xl font-eng font-light tracking-[0.3em] mb-4 text-white drop-shadow-lg">
+                    FLIGHT
+                </h1>
+                <p class="text-white/70 tracking-[0.5em] text-sm md:text-base font-light">종이 비행기의 꿈</p>
+            </div>
+            
+            <button id="startBtn" class="fade-in pulse-slow mt-8 px-8 py-3 rounded-full border border-white/30 text-white/90 hover:bg-white/10 hover:border-white/60 transition-all duration-300 tracking-widest text-sm backdrop-blur-sm" style="animation-delay: 0.5s;">
+                화면을 터치하여 시작
+            </button>
+        </div>
+
+        <!-- 게임 오버 화면 -->
+        <div id="gameOverScreen" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto hidden glass-ui transition-opacity duration-500">
+            <h2 class="text-3xl md:text-4xl font-eng font-light tracking-[0.2em] mb-2 text-white/90">END OF FLIGHT</h2>
+            <p class="text-sm mb-12 text-white/60 tracking-widest">비행 거리: <span id="finalScore" class="font-bold text-white text-xl ml-2">0</span> M</p>
+            <button id="restartBtn" class="px-8 py-3 rounded-full border border-white/30 text-white hover:bg-white/10 transition-all tracking-widest text-sm">
+                다시 날리기
+            </button>
+        </div>
+
+        <!-- 게임 클리어 화면 -->
+        <div id="gameClearScreen" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-auto hidden glass-ui transition-opacity duration-500">
+            <h2 class="text-4xl md:text-5xl font-eng font-bold tracking-[0.2em] mb-4 text-transparent bg-clip-text bg-gradient-to-r from-pink-300 via-purple-300 to-indigo-300 drop-shadow-lg fade-in">MISSION CLEAR</h2>
+            <p class="text-sm mb-12 text-white/80 tracking-widest fade-in" style="animation-delay: 0.2s;">목표 고도 5000M 도달에 성공했습니다!</p>
+            <button id="clearRestartBtn" class="px-8 py-3 rounded-full border border-white/30 text-white hover:bg-white/10 transition-all tracking-widest text-sm fade-in" style="animation-delay: 0.4s;">
+                다시 비행하기
+            </button>
+        </div>
+
+        <!-- 데미지 효과 오버레이 -->
+        <div id="damageOverlay" class="absolute inset-0 bg-red-600/30 opacity-0 pointer-events-none transition-opacity duration-100"></div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const startScreen = document.getElementById('startScreen');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const scoreText = document.getElementById('scoreText');
+    const levelText = document.getElementById('levelText');
+    const finalScore = document.getElementById('finalScore');
+    const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const damageOverlay = document.getElementById('damageOverlay');
+    const progressBarContainer = document.getElementById('progressBarContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const gameClearScreen = document.getElementById('gameClearScreen');
+    const clearRestartBtn = document.getElementById('clearRestartBtn');
+
+    const MAX_SCORE = 5000;
+
+    let width, height;
+    function resize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // 게임 상태 및 변수
+    let state = 'START';
+    let score = 0;
+    let distanceCounter = 0;
+    let isBoosting = false;
+    let frames = 0;
+    let difficulty = 1;
+    let timeOfDay = 0; // 0 ~ 1 사이클 (낮/밤 변화용)
+    let animFrameId = null;
+
+    // 게임 객체 배열
+    let particles = [];
+    let stars = [];
+    let clouds = [];
+    let obstacles = [];
+
+    // --- 하늘 색상 보간 (낮/밤/노을) ---
+    const skyStops = [
+        { p: 0.0, c: [15, 23, 42] },    // 밤
+        { p: 0.2, c: [60, 50, 100] },   // 새벽
+        { p: 0.3, c: [110, 190, 230] }, // 낮 (파란 하늘)
+        { p: 0.7, c: [110, 190, 230] }, // 낮 유지
+        { p: 0.8, c: [253, 130, 100] }, // 노을 (주황/핑크)
+        { p: 0.9, c: [40, 20, 60] },    // 저녁
+        { p: 1.0, c: [15, 23, 42] }     // 밤
+    ];
+
+    function getSkyColor(progress) {
+        let i = 0;
+        while (i < skyStops.length - 1 && progress >= skyStops[i+1].p) i++;
+        let s1 = skyStops[i], s2 = skyStops[i+1] || skyStops[i];
+        let t = (s1.p === s2.p) ? 0 : (progress - s1.p) / (s2.p - s1.p);
+        let r = Math.round(s1.c[0] + (s2.c[0] - s1.c[0]) * t);
+        let g = Math.round(s1.c[1] + (s2.c[1] - s1.c[1]) * t);
+        let b = Math.round(s1.c[2] + (s2.c[2] - s1.c[2]) * t);
+        return { r, g, b, str: `rgb(${r},${g},${b})` };
+    }
+
+    // --- 플레이어 (종이 비행기) ---
+    const player = {
+        x: width * 0.3, // 너무 왼쪽으로 치우치지 않도록 0.2에서 0.3으로 수정
+        y: height * 0.5,
+        vy: 0,
+        gravity: 0.18,
+        boost: -0.4,
+        maxVy: 8,
+        size: 15,
+        angle: 0,
+        trail: [],
+
+        reset() {
+            this.y = height * 0.4;
+            this.vy = -4; 
+            this.angle = 0;
+            this.trail = [];
+        },
+
+        update() {
+            if (isBoosting) {
+                this.vy += this.boost;
+                if (frames % 3 === 0) {
+                    particles.push(new Particle(this.x - 10, this.y + 5, -2, Math.random() * 2, 'rgba(255,255,255,0.6)'));
+                }
+            } else {
+                this.vy += this.gravity;
+            }
+
+            if (this.vy > this.maxVy) this.vy = this.maxVy;
+            if (this.vy < -this.maxVy) this.vy = -this.maxVy;
+
+            this.y += this.vy;
+
+            const targetAngle = this.vy * 0.08;
+            this.angle += (targetAngle - this.angle) * 0.1;
+
+            if (this.y > height + 20) {
+                gameOver();
+            }
+            if (this.y < 0) {
+                this.y = 0;
+                if (this.vy < 0) this.vy = 0;
+            }
+
+            this.trail.push({ x: this.x, y: this.y });
+            if (this.trail.length > 25) this.trail.shift();
+        },
+
+        draw() {
+            if (this.trail.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                for (let i = 1; i < this.trail.length; i++) ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                const grad = ctx.createLinearGradient(this.trail[0].x, 0, this.x, 0);
+                grad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+                grad.addColorStop(1, 'rgba(255, 255, 255, 0.5)');
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.angle);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+            ctx.shadowBlur = 10;
+            
+            ctx.beginPath();
+            ctx.moveTo(20, 0); 
+            ctx.lineTo(-15, -12);
+            ctx.lineTo(-8, 0); 
+            ctx.fill();
+
+            ctx.fillStyle = '#e2e8f0';
+            ctx.beginPath();
+            ctx.moveTo(20, 0); 
+            ctx.lineTo(-8, 0); 
+            ctx.lineTo(-15, 10); 
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(20, 0);
+            ctx.lineTo(-10, 0);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+    };
+
+    // --- 아이템 (별) ---
+    class Star {
+        constructor() {
+            this.x = width + 50;
+            this.y = Math.random() * (height - 100) + 50;
+            this.size = Math.random() * 3 + 3;
+            this.speed = Math.random() * 2 + 3 + difficulty;
+            this.hue = Math.random() * 30 + 40; 
+            this.markedForDeletion = false;
+        }
+        update() {
+            this.x -= this.speed;
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            if (Math.sqrt(dx * dx + dy * dy) < player.size + this.size + 15) {
+                this.markedForDeletion = true;
+                score += 50;
+                for(let i=0; i<8; i++){
+                    particles.push(new Particle(this.x, this.y, (Math.random()-0.5)*5, (Math.random()-0.5)*5, `hsl(${this.hue}, 100%, 70%)`));
+                }
+            }
+            if (this.x < -50) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fillStyle = `hsl(${this.hue}, 100%, 80%)`;
+            ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    // --- 장애물: 새 ---
+    class Bird {
+        constructor() {
+            this.x = width + 50;
+            this.y = Math.random() * (height - 150) + 75;
+            this.baseY = this.y;
+            this.speed = Math.random() * 2 + 4 + difficulty;
+            this.size = 12;
+            this.markedForDeletion = false;
+            this.offset = Math.random() * 100;
+        }
+        update() {
+            this.x -= this.speed;
+            this.y = this.baseY + Math.sin((frames + this.offset) * 0.1) * 30;
+            
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            if (Math.sqrt(dx * dx + dy * dy) < player.size + this.size) gameOver();
+            if (this.x < -50) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            let wingY = Math.sin((frames + this.offset) * 0.3) * 10;
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-10, wingY - 5);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(10, wingY - 5);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    // --- 장애물: 미사일 ---
+    class Missile {
+        constructor() {
+            this.y = Math.random() * (height - 100) + 50;
+            this.x = width + 50;
+            this.state = 'warning';
+            this.timer = 60;
+            this.speed = 12 + difficulty * 2;
+            this.size = 8;
+            this.markedForDeletion = false;
+        }
+        update() {
+            if (this.state === 'warning') {
+                this.timer--;
+                this.y += (player.y - this.y) * 0.02;
+                if (this.timer <= 0) this.state = 'shoot';
+            } else {
+                this.x -= this.speed;
+                if (frames % 2 === 0) {
+                    particles.push(new Particle(this.x + 15, this.y, Math.random(), (Math.random()-0.5), 'rgba(100,100,100,0.5)'));
+                }
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                if (Math.sqrt(dx * dx + dy * dy) < player.size + this.size + 5) gameOver();
+            }
+            if (this.x < -100) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.save();
+            if (this.state === 'warning') {
+                ctx.beginPath();
+                ctx.moveTo(width, this.y);
+                ctx.lineTo(0, this.y);
+                ctx.strokeStyle = `rgba(255, 0, 0, ${Math.abs(Math.sin(frames * 0.2)) * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = 'red';
+                ctx.fillText('!', width - 30, this.y + 5);
+            } else {
+                ctx.translate(this.x, this.y);
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#333';
+                ctx.fillRect(0, -this.size+2, 20, this.size*2-4);
+            }
+            ctx.restore();
+        }
+    }
+
+    // --- 구름 클래스 ---
+    class Cloud {
+        constructor(x = width + 100) {
+            this.x = x;
+            this.y = Math.random() * (height * 0.6);
+            this.size = Math.random() * 40 + 30;
+            this.speed = Math.random() * 0.5 + 0.2;
+            this.opacity = Math.random() * 0.3 + 0.1;
+            
+            // 구름 형태를 위한 원들
+            this.circles = [];
+            let numCircles = Math.floor(Math.random() * 3) + 3;
+            for(let i=0; i<numCircles; i++) {
+                this.circles.push({
+                    ox: (Math.random() - 0.5) * this.size * 1.5,
+                    oy: (Math.random() - 0.5) * this.size * 0.8,
+                    r: Math.random() * this.size * 0.6 + this.size * 0.4
+                });
+            }
+            this.markedForDeletion = false;
+        }
+        update() {
+            this.x -= this.speed * (1 + difficulty * 0.2); // 난이도에 따라 바람 빨라짐
+            if (this.x + this.size * 2 < 0) this.markedForDeletion = true;
+        }
+        draw(skyColor) {
+            ctx.save();
+            // 하늘 색상에 따라 구름 색상도 변함 (밤에는 어둡게, 낮에는 밝게)
+            let brightness = (skyColor.r + skyColor.g + skyColor.b) / 3;
+            let cloudTint = Math.min(255, brightness + 50);
+            
+            ctx.fillStyle = `rgba(${cloudTint}, ${cloudTint}, ${cloudTint}, ${this.opacity})`;
+            ctx.beginPath();
+            for(let c of this.circles) {
+                ctx.arc(this.x + c.ox, this.y + c.oy, c.r, 0, Math.PI * 2);
+            }
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    // --- 장애물: 열기구 (크고 천천히 움직임, 넓은 장애물) ---
+    class HotAirBalloon {
+        constructor() {
+            this.x = width + 60;
+            this.y = Math.random() * (height - 200) + 100;
+            this.speed = Math.random() * 1.5 + 2 + difficulty * 0.3;
+            this.size = 22; // 피격 판정
+            this.markedForDeletion = false;
+            this.hue = Math.random() * 360;
+        }
+        update() {
+            this.x -= this.speed;
+            this.y += Math.sin(frames * 0.05) * 0.3; // 둥둥 떠다니는 효과
+            
+            const dx = player.x - this.x;
+            const dy = player.y - (this.y - 10);
+            if (Math.sqrt(dx * dx + dy * dy) < player.size + this.size) gameOver();
+            if (this.x < -100) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            // 풍선
+            ctx.fillStyle = `hsl(${this.hue}, 80%, 60%)`;
+            ctx.beginPath();
+            ctx.arc(0, -10, 24, 0, Math.PI * 2);
+            ctx.fill();
+            // 풍선 줄무늬
+            ctx.fillStyle = `hsl(${this.hue + 40}, 80%, 50%)`;
+            ctx.beginPath();
+            ctx.ellipse(0, -10, 10, 24, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // 바구니 연결선
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-12, 8); ctx.lineTo(-8, 18);
+            ctx.moveTo(12, 8); ctx.lineTo(8, 18);
+            ctx.stroke();
+            // 바구니
+            ctx.fillStyle = '#78350f';
+            ctx.fillRect(-8, 18, 16, 12);
+            ctx.restore();
+        }
+    }
+
+    // --- 장애물: 번개 구름 (근접 시 수직으로 번개 내리침) ---
+    class Thundercloud {
+        constructor() {
+            this.x = width + 80;
+            this.y = Math.random() * (height * 0.4) + 40; // 화면 위쪽에만 생성
+            this.speed = Math.random() * 1 + 1.5 + difficulty * 0.4;
+            this.size = 30;
+            this.markedForDeletion = false;
+            this.lightningTimer = 0;
+            this.isStriking = false;
+        }
+        update() {
+            this.x -= this.speed;
+            // 플레이어가 구름 아래쪽 반경에 진입하면 번개 생성
+            if (Math.abs(this.x - player.x) < 120 && this.lightningTimer <= 0) {
+                this.isStriking = true;
+                this.lightningTimer = 40; // 번개 유지 프레임
+            }
+
+            if (this.lightningTimer > 0) {
+                this.lightningTimer--;
+                if (this.lightningTimer === 0) this.isStriking = false;
+            }
+
+            // 구름 본체 충돌
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            if (Math.sqrt(dx * dx + dy * dy) < player.size + this.size - 5) gameOver();
+
+            // 번개 충돌 판정 (수직 기둥)
+            if (this.isStriking && player.x > this.x - 15 && player.x < this.x + 15 && player.y > this.y) {
+                gameOver();
+            }
+
+            if (this.x < -150) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            // 먹구름
+            ctx.fillStyle = (this.isStriking && frames % 4 < 2) ? '#cbd5e1' : '#334155';
+            ctx.beginPath();
+            ctx.arc(0, 0, 25, 0, Math.PI * 2);
+            ctx.arc(-20, 5, 18, 0, Math.PI * 2);
+            ctx.arc(20, 5, 18, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 번개 줄기
+            if (this.isStriking) {
+                ctx.strokeStyle = '#fef08a';
+                ctx.lineWidth = 4;
+                ctx.shadowColor = '#fde047';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.moveTo(0, 15);
+                ctx.lineTo(-10, 50);
+                ctx.lineTo(5, 60);
+                ctx.lineTo(-5, height); // 화면 끝까지 떨어짐
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+    }
+
+    // --- 장애물: UFO (빠른 속도로 크게 지그재그 비행) ---
+    class UFO {
+        constructor() {
+            this.x = width + 50;
+            this.y = Math.random() * (height - 200) + 100;
+            this.baseY = this.y;
+            this.speed = Math.random() * 2 + 5 + difficulty * 1.2;
+            this.size = 18;
+            this.markedForDeletion = false;
+            this.angle = 0;
+        }
+        update() {
+            this.x -= this.speed;
+            this.angle += 0.15;
+            this.y = this.baseY + Math.sin(this.angle) * 60; // 크게 위아래로 움직임
+            
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            if (Math.sqrt(dx * dx + dy * dy) < player.size + this.size) gameOver();
+            
+            if (this.x < -100) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            // 외계인 탑승 돔
+            ctx.fillStyle = 'rgba(167, 243, 208, 0.8)';
+            ctx.beginPath();
+            ctx.arc(0, -4, 12, Math.PI, 0);
+            ctx.fill();
+            // UFO 몸체
+            ctx.fillStyle = '#64748b';
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 24, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // 라이트
+            if (frames % 12 < 6) {
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath(); ctx.arc(-14, 2, 2.5, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#3b82f6';
+                ctx.beginPath(); ctx.arc(0, 3, 2.5, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath(); ctx.arc(14, 2, 2.5, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.restore();
+        }
+    }
+
+    // --- 파티클 시스템 ---
+    class Particle {
+        constructor(x, y, vx, vy, color) {
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.vy = vy;
+            this.color = color;
+            this.alpha = 1;
+            this.size = Math.random() * 2 + 1.5;
+            this.markedForDeletion = false;
+        }
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.alpha -= 0.02;
+            if (this.alpha <= 0) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.save();
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+    }
+
+    // --- 배경 그리기 (스카이 사이클 적용) ---
+    function drawBackground() {
+        // 시간 흐름 (약 30초 = 1800프레임에 하루가 지나감)
+        if (state === 'PLAYING') {
+            timeOfDay = (frames % 1800) / 1800;
+        }
+        
+        let currentSkyColor = getSkyColor(timeOfDay);
+        let gradientColor = getSkyColor((timeOfDay + 0.1) % 1.0); // 아래쪽 그라데이션은 약간 이후의 시간 색
+
+        const grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, currentSkyColor.str);
+        grad.addColorStop(1, gradientColor.str);
+        
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+
+        // 별 (밤에만 나타남)
+        let isNight = timeOfDay > 0.8 || timeOfDay < 0.25;
+        if (isNight) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.5})`;
+            ctx.fillRect(Math.random() * width, Math.random() * height, 1.5, 1.5);
+        }
+
+        return currentSkyColor; // 구름 등에서 참조하기 위해 반환
+    }
+
+    // --- 입력 이벤트 ---
+    function handleInputStart(e) {
+        if(e.type === 'keydown') {
+            if(e.code === 'Space') {
+                e.preventDefault(); // 스페이스바 기본 동작(버튼 중복 클릭, 스크롤 등) 방지
+                if(state !== 'PLAYING') startGame();
+                isBoosting = true;
+            }
+        } else {
+            // 마우스나 터치 입력
+            if(state !== 'PLAYING') startGame();
+            isBoosting = true;
+        }
+    }
+    
+    function handleInputEnd(e) {
+        if(e.type === 'keydown') {
+            if(e.code === 'Space') {
+                e.preventDefault();
+                isBoosting = false;
+            }
+        } else {
+            isBoosting = false;
+        }
+    }
+
+    window.addEventListener('mousedown', handleInputStart);
+    window.addEventListener('touchstart', handleInputStart);
+    window.addEventListener('keydown', handleInputStart);
+    window.addEventListener('mouseup', handleInputEnd);
+    window.addEventListener('touchend', handleInputEnd);
+    window.addEventListener('keyup', handleInputEnd);
+
+    // --- 게임 흐름 제어 ---
+    function startGame() {
+        if (state === 'PLAYING') return; // 게임 중복 실행 방지
+        
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        if (document.activeElement) document.activeElement.blur(); // 버튼에 남아있는 포커스 강제 해제
+
+        state = 'PLAYING';
+        startScreen.classList.add('opacity-0', 'pointer-events-none');
+        gameOverScreen.classList.add('hidden');
+        gameClearScreen.classList.add('hidden');
+        scoreDisplay.classList.remove('opacity-0');
+        progressBarContainer.classList.remove('opacity-0', 'hidden');
+        
+        player.reset();
+        particles = [];
+        stars = [];
+        clouds = [];
+        obstacles = [];
+        score = 0;
+        distanceCounter = 0;
+        frames = 0;
+        difficulty = 1;
+        timeOfDay = 0;
