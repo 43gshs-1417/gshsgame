@@ -48,7 +48,7 @@
     <!-- UI 레이어 -->
     <div id="uiLayer" class="absolute inset-0 pointer-events-none flex flex-col justify-between">
         
-        <!-- 지오메트리 대쉬 스타일 게이지 바 -->
+        <!-- 지오메트 대쉬 스타일 게이지 바 -->
         <div id="progressBarContainer" class="absolute top-6 left-1/2 -translate-x-1/2 w-4/5 max-w-lg h-6 bg-black/60 border-2 border-white/80 rounded-full opacity-0 transition-opacity duration-1000 z-50 hidden overflow-hidden shadow-lg">
             <div id="progressBar" class="h-full bg-gradient-to-r from-lime-400 to-green-500 w-0 transition-all duration-75"></div>
             <div class="absolute inset-0 flex items-center justify-center">
@@ -641,14 +641,17 @@
 
     // --- 입력 이벤트 ---
     function handleInputStart(e) {
+        // 명시적인 버튼을 클릭/터치한 경우는 씹힘 방지를 위해 아래 버튼 전용 이벤트에서 처리하도록 무시함
+        if (e.target && e.target.closest('button')) return;
+
         if(e.type === 'keydown') {
             if(e.code === 'Space') {
-                e.preventDefault(); // 스페이스바 기본 동작(버튼 중복 클릭, 스크롤 등) 방지
+                e.preventDefault(); // 스페이스바 기본 동작(스크롤 등) 방지
                 if(state !== 'PLAYING') startGame();
                 isBoosting = true;
             }
         } else {
-            // 마우스나 터치 입력
+            // 마우스나 캔버스 화면 터치 입력
             if(state !== 'PLAYING') startGame();
             isBoosting = true;
         }
@@ -666,7 +669,7 @@
     }
 
     window.addEventListener('mousedown', handleInputStart);
-    window.addEventListener('touchstart', handleInputStart);
+    window.addEventListener('touchstart', handleInputStart, {passive: false});
     window.addEventListener('keydown', handleInputStart);
     window.addEventListener('mouseup', handleInputEnd);
     window.addEventListener('touchend', handleInputEnd);
@@ -677,7 +680,7 @@
         if (state === 'PLAYING') return; // 게임 중복 실행 방지
         
         if (animFrameId) cancelAnimationFrame(animFrameId);
-        if (document.activeElement) document.activeElement.blur(); // 버튼에 남아있는 포커스 강제 해제
+        if (document.activeElement) document.activeElement.blur(); // 포커스 강제 해제
 
         state = 'PLAYING';
         startScreen.classList.add('opacity-0', 'pointer-events-none');
@@ -835,10 +838,20 @@
     // 초기 화면 렌더링
     drawBackground();
 
-    // 시작 버튼들
-    startBtn.addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
-    restartBtn.addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
-    clearRestartBtn.addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+    // 시작 버튼들 (click 이벤트 대신 mousedown/touchstart 사용으로 반응속도 개선 및 씹힘 방지)
+    function setupButton(btn) {
+        const action = (e) => {
+            e.preventDefault(); // 모바일 환경에서 호버 이슈 및 딜레이 방지
+            e.stopPropagation(); // 캔버스 화면 터치 이벤트로 중복 전달되는 것 차단
+            if (state !== 'PLAYING') startGame();
+        };
+        btn.addEventListener('mousedown', action);
+        btn.addEventListener('touchstart', action, {passive: false});
+    }
+
+    setupButton(startBtn);
+    setupButton(restartBtn);
+    setupButton(clearRestartBtn);
 
 </script>
 </body>
