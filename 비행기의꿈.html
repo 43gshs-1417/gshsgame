@@ -696,3 +696,150 @@
         frames = 0;
         difficulty = 1;
         timeOfDay = 0;
+
+        progressBar.style.width = '0%';
+        progressText.innerText = '0%';
+
+        // 초기 구름 생성
+        for(let i=0; i<5; i++) clouds.push(new Cloud(Math.random() * width));
+        
+        gameLoop();
+    }
+
+    function gameClear() {
+        if (state === 'CLEAR') return;
+        state = 'CLEAR';
+        
+        // 폭죽(파티클) 축하 이펙트
+        for(let i=0; i<100; i++){
+            particles.push(new Particle(player.x, player.y, (Math.random()-0.5)*15, (Math.random()-0.5)*15, `hsl(${Math.random()*360}, 100%, 70%)`));
+        }
+
+        setTimeout(() => {
+            scoreDisplay.classList.add('opacity-0');
+            progressBarContainer.classList.add('opacity-0');
+            gameClearScreen.classList.remove('hidden');
+        }, 800);
+    }
+
+    function gameOver() {
+        if (state === 'GAMEOVER') return;
+        state = 'GAMEOVER';
+        
+        // 화면 빨개지는 효과
+        damageOverlay.classList.remove('opacity-0');
+        setTimeout(() => damageOverlay.classList.add('opacity-0'), 200);
+
+        // 파티클 폭발
+        for(let i=0; i<30; i++){
+            particles.push(new Particle(player.x, player.y, (Math.random()-0.5)*10, (Math.random()-0.5)*10, '#ffffff'));
+        }
+
+        setTimeout(() => {
+            scoreDisplay.classList.add('opacity-0');
+            progressBarContainer.classList.add('opacity-0');
+            gameOverScreen.classList.remove('hidden');
+            finalScore.innerText = Math.floor(score);
+        }, 500);
+    }
+
+    // --- 메인 게임 루프 ---
+    function gameLoop() {
+        if (state !== 'PLAYING') {
+            // 게임오버/클리어 시 파티클만 렌더링 유지
+            if((state === 'GAMEOVER' || state === 'CLEAR') && particles.length > 0) {
+                drawBackground();
+                particles.forEach(p => { p.update(); p.draw(); });
+                particles = particles.filter(p => !p.markedForDeletion);
+                animFrameId = requestAnimationFrame(gameLoop);
+            }
+            return;
+        }
+
+        ctx.clearRect(0, 0, width, height);
+        
+        // 배경 & 하늘색 반환
+        let skyColor = drawBackground();
+
+        frames++;
+        distanceCounter += 0.05;
+        score += 0.5;
+
+        // 게이지 바 업데이트
+        let progressPercent = Math.min((score / MAX_SCORE) * 100, 100);
+        progressBar.style.width = progressPercent + '%';
+        progressText.innerText = Math.floor(progressPercent) + '%';
+
+        // 클리어 체크
+        if (score >= MAX_SCORE) {
+            score = MAX_SCORE;
+            scoreText.innerText = Math.floor(score) + ' M';
+            progressBar.style.width = '100%';
+            progressText.innerText = '100%';
+            gameClear();
+            return;
+        }
+
+        // 난이도 증가 (1000점 마다 레벨업)
+        difficulty = 1 + Math.floor(score / 1000) * 0.6;
+        scoreText.innerText = Math.floor(score) + ' M';
+        levelText.innerText = 'LEVEL ' + Math.floor(score / 1000 + 1);
+
+        // 객체 생성 로직
+        // 1. 구름
+        if (frames % 150 === 0) clouds.push(new Cloud());
+        
+        // 2. 별 (아이템)
+        if (frames % 120 === 0 && Math.random() > 0.4) stars.push(new Star());
+
+        // 3. 장애물
+        let obstacleSpawnRate = Math.max(30, 90 - difficulty * 12);
+        if (frames > 150 && frames % Math.floor(obstacleSpawnRate) === 0) {
+            let rand = Math.random();
+            if (difficulty < 1.6) {
+                if (rand > 0.5) obstacles.push(new Bird());
+                else obstacles.push(new HotAirBalloon());
+            } else if (difficulty < 2.8) {
+                if (rand > 0.7) obstacles.push(new Missile());
+                else if (rand > 0.5) obstacles.push(new Thundercloud());
+                else if (rand > 0.25) obstacles.push(new Bird());
+                else obstacles.push(new HotAirBalloon());
+            } else {
+                if (rand > 0.8) obstacles.push(new UFO());
+                else if (rand > 0.6) obstacles.push(new Thundercloud());
+                else if (rand > 0.4) obstacles.push(new Missile());
+                else if (rand > 0.2) obstacles.push(new Bird());
+                else obstacles.push(new HotAirBalloon());
+            }
+        }
+
+        // 업데이트 및 그리기
+        clouds.forEach(c => { c.update(); c.draw(skyColor); });
+        clouds = clouds.filter(c => !c.markedForDeletion);
+
+        stars.forEach(s => { s.update(); s.draw(); });
+        stars = stars.filter(s => !s.markedForDeletion);
+
+        obstacles.forEach(o => { o.update(); o.draw(); });
+        obstacles = obstacles.filter(o => !o.markedForDeletion);
+
+        particles.forEach(p => { p.update(); p.draw(); });
+        particles = particles.filter(p => !p.markedForDeletion);
+
+        player.update();
+        if(state === 'PLAYING') player.draw();
+
+        animFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // 초기 화면 렌더링
+    drawBackground();
+
+    // 시작 버튼들
+    startBtn.addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+    restartBtn.addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+    clearRestartBtn.addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+
+</script>
+</body>
+</html>
