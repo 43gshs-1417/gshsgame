@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>패트로누스 분석기 — 호그와트</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+/* ── 기본 변수 ─────────────────────────────────── */
+:root {
+  --gold: #c9a84c;
+  --gold-lt: #f0d080;
+  --gold-dk: #8a6010;
+  --bg: #0c0904;
+  --bg2: #15100a;
+  --card: rgba(20,13,5,0.90);
+  --text: #e8ddc8;
+  --text-dim: #9a8a70;
+  --border: rgba(201,168,76,0.40);
+
+  /* 기숙사 색상 (JS가 덮어씀) */
+  --house-primary: #740001;
+  --house-accent:  #d3a625;
+  --house-text:    #ffc500;
+  --house-glow:    rgba(116,0,1,0.35);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── 돌벽 배경 ─────────────────────────────────── */
+body {
+  font-family: 'Georgia', serif;
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: var(--bg);
+  background-image:
+    repeating-linear-gradient(0deg,   transparent, transparent 39px, rgba(255,255,255,0.03) 39px, rgba(255,255,255,0.03) 40px),
+    repeating-linear-gradient(90deg,  transparent, transparent 39px, rgba(255,255,255,0.02) 39px, rgba(255,255,255,0.02) 40px),
+    radial-gradient(ellipse at 20% 10%, rgba(201,168,76,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 90%, rgba(201,168,76,0.04) 0%, transparent 50%);
+}
+
+/* 별 레이어 */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    radial-gradient(1px 1px at  8% 12%, rgba(255,255,210,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 22% 38%, rgba(255,255,210,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 41%  8%, rgba(255,255,200,0.8) 0%, transparent 100%),
+    radial-gradient(1px 1px at 58% 28%, rgba(255,255,210,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 73% 52%, rgba(255,255,210,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 84% 18%, rgba(255,255,200,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 91% 68%, rgba(255,255,210,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 14% 78%, rgba(255,255,210,0.4) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 50% 63%, rgba(255,255,200,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 68% 83%, rgba(255,255,210,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 33% 55%, rgba(255,255,210,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 76% 42%, rgba(255,255,210,0.5) 0%, transparent 100%);
+}
+
+/* 벽 균열 장식 */
+body::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.04;
+  background-image:
+    linear-gradient(125deg, transparent 40%, rgba(201,168,76,0.8) 40.5%, transparent 41%),
+    linear-gradient(250deg, transparent 60%, rgba(201,168,76,0.6) 60.5%, transparent 61%);
+}
+
+.page { position: relative; z-index: 1; }
+
+/* ── 헤더 ──────────────────────────────────────── */
+header {
+  text-align: center;
+  padding: 2.8rem 1rem 1.8rem;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+header::after {
+  content: '⚡ ✦ ⚡';
+  display: block;
+  color: var(--gold);
+  font-size: 0.75rem;
+  letter-spacing: 0.8em;
+  margin-top: 0.8rem;
+  opacity: 0.7;
+}
+
+.header-crest {
+  font-size: 2.5rem;
+  margin-bottom: 0.4rem;
+  filter: drop-shadow(0 0 10px rgba(201,168,76,0.5));
+}
+
+header .subtitle {
+  font-family: 'Cinzel', serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.5em;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+header h1 {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: clamp(1.6rem, 4.5vw, 2.8rem);
+  font-weight: 700;
+  background: linear-gradient(135deg, #fff 0%, var(--gold-lt) 40%, var(--gold) 70%, #a07820 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+  line-height: 1.2;
+}
+
+header p {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+/* ── 공통 카드 ─────────────────────────────────── */
+.hg-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(201,168,76,0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.hg-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+/* ── 메인 레이아웃 ─────────────────────────────── */
+main { max-width: 860px; margin: 0 auto; padding: 1.2rem 1rem 4rem; }
+
+/* ── 카메라 섹션 ────────────────────────────────── */
+.camera-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.camera-wrap {
+  position: relative;
+  border: 2px solid var(--gold);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(201,168,76,0.2), 0 0 80px rgba(201,168,76,0.08);
+  background: #000;
+  width: 100%; max-width: 520px;
+}
+
+/* 카메라 모서리 장식 */
+.camera-wrap::before, .camera-wrap::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border-color: var(--gold-lt);
+  border-style: solid;
+  z-index: 10;
+}
+.camera-wrap::before { top: 6px; left: 6px; border-width: 2px 0 0 2px; }
+.camera-wrap::after  { bottom: 6px; right: 6px; border-width: 0 2px 2px 0; }
+
+#video {
+  display: block; width: 100%;
+  aspect-ratio: 4/3; object-fit: cover;
+  transform: scaleX(-1);
+}
+
+#overlay-canvas {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform: scaleX(-1);
+}
+
+.flash-overlay {
+  position: absolute; inset: 0;
+  background: white; opacity: 0;
+  pointer-events: none; transition: opacity 0.05s; border-radius: 6px;
+}
+.flash-overlay.active { opacity: 1; }
+
+.status-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,0.85));
+  padding: 1.2rem 1rem 0.7rem;
+  text-align: center;
+}
+
+#status-text {
+  font-family: 'Cinzel', serif;
+  font-size: 0.78rem;
+  color: var(--gold-lt);
+  letter-spacing: 0.06em;
+}
+
+/* ── 버튼 ──────────────────────────────────────── */
+.btn-row { display: flex; gap: 0.8rem; flex-wrap: wrap; justify-content: center; }
+
+.btn {
+  padding: 0.7rem 1.8rem;
+  border-radius: 3px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  letter-spacing: 0.05em;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--gold) 0%, #a07010 100%);
+  color: #1a0a00;
+  box-shadow: 0 0 20px rgba(201,168,76,0.35);
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 32px rgba(201,168,76,0.6); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--gold);
+  border: 1.5px solid var(--gold);
+}
+.btn-secondary:hover { background: rgba(201,168,76,0.1); }
+
+/* ── 분류 모자 섹션 ─────────────────────────────── */
+#hat-section {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1rem;
+  min-height: 55vh;
+  text-align: center;
+}
+
+.hat-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* 말풍선 */
+.hat-speech-bubble {
+  background: #f2e8c5;
+  border: 2px solid #9B7730;
+  border-radius: 14px;
+  padding: 0.9rem 1.4rem;
+  max-width: 300px;
+  min-width: 200px;
+  min-height: 52px;
+  color: #2a1008;
+  font-family: 'Cinzel', serif;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  position: relative;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hat-speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -11px; left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #9B7730;
+}
+.hat-speech-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: -8px; left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #f2e8c5;
+  z-index: 1;
+}
+
+#hat-speech-text {
+  display: block;
+  transition: color 0.3s;
+}
+
+/* 분류 모자 SVG */
+.hat-svg-wrap {
+  animation: hat-sway 1.8s ease-in-out infinite;
+  transform-origin: 50% 98%;
+  filter: drop-shadow(0 6px 18px rgba(0,0,0,0.7));
+}
+
+.hat-svg-wrap.hat-shout {
+  animation: hat-shout-anim 0.4s ease-in-out 3;
+}
+
+@keyframes hat-sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50%       { transform: rotate(4deg); }
+}
+
+@keyframes hat-shout-anim {
+  0%   { transform: scale(1)    rotate(0); }
+  25%  { transform: scale(1.06) rotate(-6deg); }
+  75%  { transform: scale(1.06) rotate(6deg); }
+  100% { transform: scale(1)    rotate(0); }
+}
+
+/* 기숙사 전면 공개 오버레이 */
+#house-flash {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s;
+}
+#house-flash.show { opacity: 1; pointer-events: all; }
+
+.house-flash-inner {
+  text-align: center;
+  animation: house-zoom 0.4s cubic-bezier(0.22,1,0.36,1);
+}
+
+@keyframes house-zoom {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.house-flash-animal { margin-bottom: 0.6rem; line-height: 1; }
+
+.house-flash-name {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: clamp(2.4rem, 7vw, 4rem);
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 30px currentColor, 0 2px 0 rgba(0,0,0,0.4);
+  margin-bottom: 0.3rem;
+}
+
+.house-flash-en {
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  letter-spacing: 0.4em;
+  color: rgba(255,255,255,0.7);
+}
+
+/* ── 결과 섹션 ─────────────────────────────────── */
+#result-section { display: none; animation: fadeUp 0.6s ease; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 기숙사 배너 */
+.house-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.2rem;
+  border-radius: 6px;
+  border: 1.5px solid var(--house-accent);
+  background: var(--house-glow);
+  box-shadow: 0 0 30px var(--house-glow);
+}
+
+.house-banner-icon { font-size: 2.2rem; }
+
+.house-banner-text { text-align: left; }
+
+.house-banner-kr {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--house-text);
+  text-shadow: 0 0 12px var(--house-text);
+}
+
+.house-banner-en {
+  font-family: 'Cinzel', serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.35em;
+  color: var(--house-accent);
+  margin-top: 0.1rem;
+}
+
+.house-banner-motto {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 0.15rem;
+}
+
+/* 결과 히어로 카드 */
+.result-hero {
+  padding: 2rem;
+  margin-bottom: 1.4rem;
+  border-left: 4px solid var(--house-accent);
+  text-align: center;
+}
+
+.result-hero h2 {
+  font-family: 'Cinzel', serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.4em;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+
+.patronus-name {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: clamp(1.8rem, 5.5vw, 3rem);
+  background: linear-gradient(135deg, #fff 10%, var(--gold-lt) 50%, var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.3rem;
+  line-height: 1.2;
+}
+
+.wizard-name {
+  color: var(--text-dim);
+  font-style: italic;
+  margin-bottom: 1.4rem;
+  font-size: 0.9rem;
+}
+
+.photos-row {
+  display: flex; gap: 1.5rem;
+  justify-content: center; align-items: flex-end;
+  margin-bottom: 1.5rem; flex-wrap: wrap;
+}
+
+.photo-card { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
+
+.photo-card img {
+  width: 130px; height: 160px;
+  object-fit: cover; border-radius: 6px;
+  border: 2px solid var(--house-accent, var(--gold));
+  box-shadow: 0 0 20px var(--house-glow, rgba(201,168,76,0.2));
+  background: #111;
+}
+
+.photo-card span {
+  font-family: 'Cinzel', serif;
+  font-size: 0.72rem; color: var(--text-dim); letter-spacing: 0.05em;
+}
+
+.vs-label {
+  font-size: 1.8rem; color: var(--gold); opacity: 0.5;
+  align-self: center; padding-bottom: 1.5rem;
+}
+
+.match-pct {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 3rem; font-weight: 700;
+  color: var(--house-text, var(--gold-lt));
+  text-shadow: 0 0 20px var(--house-text, var(--gold-lt));
+  line-height: 1; margin-bottom: 0.2rem;
+}
+
+.match-label {
+  font-family: 'Cinzel', serif;
+  font-size: 0.72rem; color: var(--text-dim);
+  letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 1.2rem;
+}
+
+.trait-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; margin-bottom: 1.2rem; }
+
+.trait-tag {
+  padding: 0.28rem 0.8rem;
+  border: 1px solid var(--house-accent, var(--gold));
+  border-radius: 3px;
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem; color: var(--house-text, var(--gold-lt));
+  background: rgba(255,255,255,0.04);
+}
+
+.result-desc {
+  font-size: 0.92rem; line-height: 1.75;
+  color: var(--text); max-width: 560px;
+  margin: 0 auto; font-style: italic;
+}
+
+/* ── 랭킹 ──────────────────────────────────────── */
+.ranking-card { padding: 1.4rem; margin-bottom: 1.4rem; }
+
+.ranking-card h3 {
+  font-family: 'Cinzel', serif;
+  color: var(--gold); font-size: 0.82rem;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  margin-bottom: 1.2rem; text-align: center;
+}
+
+.rank-item { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.9rem; }
+
+.rank-medal { font-size: 1.2rem; flex-shrink: 0; width: 1.8rem; text-align: center; }
+
+.rank-info { flex: 1; }
+
+.rank-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.82rem; color: var(--text);
+  margin-bottom: 0.3rem;
+  display: flex; justify-content: space-between;
+}
+
+.rank-pct { color: var(--gold); font-size: 0.8rem; }
+
+.rank-bar-bg { background: rgba(255,255,255,0.08); border-radius: 2px; height: 7px; overflow: hidden; }
+
+.rank-bar {
+  height: 100%; border-radius: 2px;
+  transition: width 1.1s cubic-bezier(0.22,1,0.36,1); width: 0%;
+}
+.rank-bar.gold   { background: linear-gradient(90deg, var(--gold), var(--gold-lt)); }
+.rank-bar.silver { background: linear-gradient(90deg, #777, #bbb); }
+.rank-bar.bronze { background: linear-gradient(90deg, #a0602a, #d4904a); }
+
+/* ── 표정 카드 ─────────────────────────────────── */
+.expr-card { padding: 1.2rem; margin-bottom: 1.4rem; }
+
+.expr-card h4 {
+  font-family: 'Cinzel', serif;
+  color: var(--text-dim); font-size: 0.72rem;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  margin-bottom: 0.8rem; text-align: center;
+}
+
+.expr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; }
+
+.expr-item { text-align: center; font-size: 0.78rem; }
+.expr-item .expr-label { color: var(--text-dim); margin-bottom: 0.2rem; font-family: 'Cinzel', serif; font-size: 0.7rem; }
+.expr-item .expr-val   { color: var(--gold-lt); font-weight: bold; }
+
+/* ── 다시하기 ──────────────────────────────────── */
+.retry-wrap { text-align: center; margin-top: 0.5rem; }
+
+/* ── 반응형 ────────────────────────────────────── */
+@media (max-width: 500px) {
+  .photos-row { gap: 0.8rem; }
+  .photo-card img { width: 100px; height: 125px; }
+  .house-banner { flex-direction: column; text-align: center; }
+  .house-banner-text { text-align: center; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- 기숙사 전면 공개 오버레이 -->
+  <div id="house-flash">
+    <div class="house-flash-inner">
+      <div class="house-flash-animal" id="flash-animal"></div>
+      <div class="house-flash-name"   id="flash-name"></div>
+      <div class="house-flash-en"     id="flash-en"></div>
+    </div>
+  </div>
+
+  <header>
+    <div class="subtitle">Hogwarts School of Witchcraft &amp; Wizardry</div>
+    <h1>패트로누스 분석기</h1>
+    <p>얼굴을 보여주세요 — 분류 모자가 당신의 수호 동물을 찾아드립니다</p>
+  </header>
+
+  <main>
+
+    <!-- 카메라 섹션 -->
+    <div class="camera-section" id="camera-section">
+      <div class="camera-wrap">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay-canvas"></canvas>
+        <div class="flash-overlay" id="flash"></div>
+        <div class="status-bar">
+          <div id="status-text">카메라 시작 버튼을 눌러주세요</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="start-btn"   onclick="startCamera()">📷 카메라 시작</button>
+        <button class="btn btn-primary" id="capture-btn" onclick="captureAndAnalyze()" disabled>✨ 분석하기</button>
+      </div>
+    </div>
+
+    <!-- 분류 모자 섹션 -->
+    <div id="hat-section">
+      <div class="hat-stage">
+        <div class="hat-speech-bubble">
+          <span id="hat-speech-text">…</span>
+        </div>
+
+        <div class="hat-svg-wrap" id="hat-svg-wrap">
+          <!-- 분류 모자 SVG -->
+          <svg width="160" height="200" viewBox="0 0 120 148" xmlns="http://www.w3.org/2000/svg">
+            <!-- 모자 본체 -->
+            <path d="M60,7 C57,32 48,58 36,86 Q48,82 60,82 Q72,82 84,86 C72,58 63,32 60,7Z"
+                  fill="#2a1a0e" stroke="#3d2510" stroke-width="0.8"/>
+            <!-- 음영 -->
+            <path d="M60,7 C62,32 68,58 78,84 Q72,82 60,82 C63,58 63,32 60,7Z"
+                  fill="rgba(0,0,0,0.18)"/>
+            <!-- 챙 -->
+            <ellipse cx="60" cy="98" rx="52" ry="13" fill="#221308"/>
+            <ellipse cx="60" cy="95" rx="52" ry="13" fill="#2e1b0f"/>
+            <!-- 띠 -->
+            <path d="M36,86 Q60,93 84,86" stroke="#7a5230" stroke-width="7" fill="none" stroke-linecap="round"/>
+            <!-- 버클 -->
+            <rect x="50" y="83" width="20" height="11" rx="2" fill="#c9a84c"/>
+            <rect x="53" y="85" width="14" height="7"  rx="1" fill="#2a1a0e"/>
+            <!-- 눈썹 -->
+            <path d="M36,61 Q43,57 50,61" stroke="#5a3820" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <path d="M70,61 Q77,57 84,61" stroke="#5a3820" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <!-- 눈 -->
+            <ellipse id="hat-eye-l" cx="43" cy="69" rx="7" ry="5" fill="#0d0500"/>
+            <ellipse id="hat-eye-r" cx="77" cy="69" rx="7" ry="5" fill="#0d0500"/>
+            <!-- 눈동자 하이라이트 -->
+            <circle cx="46" cy="67" r="1.5" fill="rgba(255,200,80,0.25)"/>
+            <circle cx="80" cy="67" r="1.5" fill="rgba(255,200,80,0.25)"/>
+            <!-- 입 -->
+            <path id="hat-mouth" d="M39,78 Q60,86 81,78" stroke="#5a3820" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- 결과 섹션 -->
+    <div id="result-section">
+
+      <!-- 기숙사 배너 -->
+      <div class="house-banner hg-card" id="res-house-banner">
+        <div class="house-banner-icon" id="res-house-icon"></div>
+        <div class="house-banner-text">
+          <div class="house-banner-kr"    id="res-house-kr"></div>
+          <div class="house-banner-en"    id="res-house-en"></div>
+          <div class="house-banner-motto" id="res-house-motto"></div>
+        </div>
+      </div>
+
+      <!-- 패트로누스 결과 -->
+      <div class="result-hero hg-card">
+        <h2>당신의 패트로누스</h2>
+        <div class="patronus-name" id="res-name"></div>
+        <div class="wizard-name"   id="res-wizard"></div>
+
+        <div class="photos-row">
+          <div class="photo-card">
+            <img id="res-char-img" src="" alt="캐릭터"
+                 onerror="this.src='data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'130\' height=\'160\'><rect width=\'130\' height=\'160\' fill=\'%23111\'/><text y=\'90\' x=\'65\' font-size=\'40\' text-anchor=\'middle\' fill=\'%23c9a84c\'>🧙</text></svg>'">
+            <span id="res-char-label">마법사</span>
+          </div>
+          <div class="vs-label">✦</div>
+          <div class="photo-card">
+            <img id="res-patronus-img" src="" alt="패트로누스"
+                 onerror="this.src='data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'130\' height=\'160\'><rect width=\'130\' height=\'160\' fill=\'%23111\'/><text y=\'95\' x=\'65\' font-size=\'55\' text-anchor=\'middle\' fill=\'%23f0d080\'>✨</text></svg>'">
+            <span>패트로누스</span>
+          </div>
+        </div>
+
+        <div class="match-pct"   id="res-pct">—%</div>
+        <div class="match-label">관상 매칭률</div>
+
+        <div class="trait-tags" id="res-traits"></div>
+        <div class="result-desc" id="res-desc"></div>
+      </div>
+
+      <!-- 랭킹 -->
+      <div class="ranking-card hg-card">
+        <h3>🏆 패트로누스 매칭 순위</h3>
+        <div id="ranking-list"></div>
+      </div>
+
+      <!-- 표정 데이터 -->
+      <div class="expr-card hg-card">
+        <h4>감지된 표정 데이터</h4>
+        <div class="expr-grid" id="expr-grid"></div>
+      </div>
+
+      <div class="retry-wrap">
+        <button class="btn btn-secondary" onclick="resetToCamera()">🔄 다시 분석하기</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─── 기숙사 데이터 ─────────────────────────────────────────────────────────────
+const HOUSES = {
+  gryffindor: {
+    name: '그리핀도르', english: 'GRYFFINDOR',
+    crest: 'https://i.pinimg.com/236x/59/10/53/591053e500f3a3feb3543e6b2efd2e79.jpg',
+    colors: { primary: '#5a0001', accent: '#d3a625', text: '#ffc500', glow: 'rgba(116,0,1,0.4)' },
+    motto: '담대한 용기가 깃드는 곳',
+    hint: '용기... 그렇군, 담대한 심장 박동이 느껴져...',
+  },
+  slytherin: {
+    name: '슬리데린', english: 'SLYTHERIN',
+    crest: 'https://i.pinimg.com/736x/af/4c/63/af4c63c4889d8ea78324dbcc7d499ec9.jpg',
+    colors: { primary: '#0d3320', accent: '#7dffb3', text: '#aaffcc', glow: 'rgba(26,71,42,0.45)' },
+    motto: '야망과 영리함이 살아 숨쉬는 곳',
+    hint: '야망... 영리함... 이건 확실해...',
+  },
+  ravenclaw: {
+    name: '래번클로', english: 'RAVENCLAW',
+    crest: 'https://dh.aks.ac.kr/Edu/wiki/images/1/12/1503HPPP_%2887%29.jpg',
+    colors: { primary: '#0a1535', accent: '#6ea8fe', text: '#a8d0ff', glow: 'rgba(14,26,64,0.5)' },
+    motto: '지혜와 통찰이 빛나는 곳',
+    hint: '날카로운 지성이 빛나고 있어...',
+  },
+  hufflepuff: {
+    name: '후플푸프', english: 'HUFFLEPUFF',
+    crest: 'https://dh.aks.ac.kr/Edu/wiki/images/2/2b/57235fc71095f77d755aa73e47126d65.jpg',
+    colors: { primary: '#2e2000', accent: '#ecb939', text: '#ffe27d', glow: 'rgba(55,46,41,0.5)' },
+    motto: '성실과 충성이 꽃피는 곳',
+    hint: '성실함과 충성심... 틀림없어...',
+  },
+};
+
+// ─── 패트로누스 데이터 ─────────────────────────────────────────────────────────
+const PATRONUSES = [
+  {
+    id: 'stag', name: '수사슴 (Stag)', emoji: '🦌',
+    wizard: '해리 포터', house: 'gryffindor',
+    wikiQuery: 'Harry_Potter_(character)', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMTAw/MDAxNDgyOTk4MzI4MzYx.f_xVRTEAVyzynw4KAZgxOZqk9BvFn85kKDQrev_7Tmkg._Udp8rsfo_ZHAIsh8QcSM1xQyFgyNkRXyWKuppKqacYg.JPEG.jshn0107/harry.jpg?type=w773',
+    traits: ['용감함', '리더십', '보호 본능', '정의감'],
+    desc: '당신은 타고난 리더입니다. 위험 앞에서도 흔들리지 않는 용기와 소중한 이들을 지키려는 강한 보호 본능이 수사슴 패트로누스를 불러냈습니다. "Expecto Patronum!"',
+    weights: [0.30, 0.05, 0.15, 0.10, 0.20, 0.00, 0.20],
+    ageBonus: { min: 15, max: 30, bonus: 5 },
+  },
+  {
+    id: 'otter', name: '수달 (Otter)', emoji: '🦦',
+    wizard: '헤르미온느 그레인저', house: 'gryffindor',
+    wikiQuery: 'Hermione_Granger', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMTkw/MDAxNDgyOTk4MzI4NTYy.qPN7ZG6Aza28WrBPyN4ueKoSpVaYIC_4D0I61jQttMMg.d7HZdxTuHPbxKqBPrWECZJtyaeEOaPBjVFRy3BOcAvMg.JPEG.jshn0107/hermione.jpg?type=w773',
+    traits: ['지적 호기심', '따뜻한 마음', '성실함', '논리적'],
+    desc: '지식을 향한 끝없는 탐구심과 친구를 아끼는 따뜻한 마음이 수달 패트로누스를 만들었습니다. 당신은 이성과 감성을 모두 갖춘 사람입니다.',
+    weights: [0.25, 0.10, 0.00, 0.05, 0.25, 0.05, 0.30],
+    ageBonus: { min: 13, max: 25, bonus: 4 },
+  },
+  {
+    id: 'terrier', name: '잭 러셀 테리어', emoji: '🐕',
+    wizard: '론 위즐리', house: 'gryffindor',
+    wikiQuery: 'Ron_Weasley', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMjcg/MDAxNDgyOTk4MzI4NTAz.iC8cS_eJg8ukkzhpHfbeWiOh4C_BhOTw2UtzMnNi_ZIg.5qNPAfWEs4Qws_zMML2V0ofXg_lJ7x6linyA73MK2ysg.JPEG.jshn0107/r.jpg?type=w773',
+    traits: ['충성심', '유머', '우정', '진솔함'],
+    desc: '유머와 진심 어린 우정이 당신의 가장 큰 무기입니다. 잭 러셀 테리어는 활기차고 충성스러운 영혼을 상징합니다. 진짜 친구는 당신 같은 사람입니다.',
+    weights: [0.40, 0.05, 0.05, 0.05, 0.20, 0.05, 0.20],
+    ageBonus: { min: 13, max: 22, bonus: 6 },
+  },
+  {
+    id: 'doe', name: '암사슴 (Doe)', emoji: '🫎',
+    wizard: '세베루스 스네이프', house: 'slytherin',
+    wikiQuery: 'Severus_Snape', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMTM0/MDAxNDgyOTk4MzI4NjI3.83mIi1NfaqrI6KsVlOvfKl4zC_W6Zim9Nu59NeiLPkgg.cvpDBdexRC6ET0JU3yVJuhe28hVC-HMU3WcigGQ0g_Eg.JPEG.jshn0107/snape.jpg?type=w773',
+    traits: ['깊은 사랑', '희생 정신', '온화함', '불굴의 의지'],
+    desc: '사랑하는 이를 위해 모든 것을 내어줄 수 있는 당신. 암사슴 패트로누스는 가장 순수하고 강인한 사랑의 힘에서 태어납니다. "Always."',
+    weights: [0.10, 0.30, 0.05, 0.15, 0.05, 0.00, 0.35],
+    ageBonus: { min: 25, max: 60, bonus: 5 },
+  },
+  {
+    id: 'phoenix', name: '불사조 (Phoenix)', emoji: '🔥',
+    wizard: '알버스 덤블도어', house: 'gryffindor',
+    wikiQuery: 'Albus_Dumbledore', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMTEg/MDAxNDgyOTk4MzI4MjI3._ai89W6Br8h0seVEMQ2b0jYy0t7gietr_nCoMnQ-58Ag.5A8jKxP0N4pByxRvUMnu-ockTNCAr505IP3QWfD2yeUg.JPEG.jshn0107/02.jpg?type=w773',
+    traits: ['지혜', '희망', '불굴의 의지', '통찰력'],
+    desc: '역경 속에서도 꺼지지 않는 희망의 불꽃을 지닌 당신. 불사조는 다시 태어나는 존재처럼, 당신도 어떤 시련도 이겨낼 지혜와 의지를 가졌습니다.',
+    weights: [0.15, 0.15, 0.05, 0.10, 0.10, 0.00, 0.45],
+    ageBonus: { min: 40, max: 90, bonus: 8 },
+  },
+  {
+    id: 'horse', name: '말 (Horse)', emoji: '🐴',
+    wizard: '지니 위즐리', house: 'gryffindor',
+    wikiQuery: 'Ginny_Weasley', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfOTYg/MDAxNDgyOTk4MzI4MzU5.mN6uEATfuQZtOzkYYAOpeaxb_SOHrpkRK14nKFElwi0g.Eocrq6uOJ3bgfXuzVgW9pF1ia-ppG85DrqgxhI7JMNYg.JPEG.jshn0107/ginny.jpg?type=w773',
+    traits: ['강인한 의지', '자유로운 영혼', '열정', '독립심'],
+    desc: '누구의 시선도 아랑곳하지 않고 자신만의 길을 달리는 자유로운 영혼. 말 패트로누스는 뜨거운 열정과 흔들리지 않는 자존감을 가진 이를 선택합니다.',
+    weights: [0.30, 0.05, 0.20, 0.05, 0.20, 0.05, 0.15],
+    ageBonus: { min: 16, max: 35, bonus: 5 },
+  },
+  {
+    id: 'cat', name: '고양이 (Cat)', emoji: '🐱',
+    wizard: '맥고나걸 / 엄브릿지', house: 'gryffindor',
+    wikiQuery: 'Minerva_McGonagall', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfNzcg/MDAxNDgyOTk4MzI4Njg5.rC2atx1UlGdrj_fUCk7d7-nqpJA00vqmJUZJF2MqBJUg.NqYFf7uhFeFDXPmI6PUfgDlk0g3mApDlsNrbrjuYwIQg.JPEG.jshn0107/umb.jpg?type=w773',
+    traits: ['냉철한 지성', '완벽주의', '신중함', '독립적'],
+    desc: '감정에 흔들리지 않는 냉철한 판단력과 모든 일을 완벽하게 처리하려는 의지. 고양이 패트로누스는 높은 기준을 스스로에게 요구하는 사람을 선택합니다.',
+    weights: [0.05, 0.15, 0.05, 0.05, 0.05, 0.20, 0.45],
+    ageBonus: { min: 35, max: 80, bonus: 5 },
+  },
+  {
+    id: 'hare', name: '산토끼 (Hare)', emoji: '🐇',
+    wizard: '루나 러브굿', house: 'ravenclaw',
+    wikiQuery: 'Luna_Lovegood', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMjM2/MDAxNDgyOTk4MzI4MjMy.36KAD2C_13uqB8T0l8nr5BZKkWlPOvpQxuduwHDKiGEg.GdrOkUrW83RimnW8FOiQUFrhpLAwVgQToFJuEEQG65og.JPEG.jshn0107/777.jpg?type=w773',
+    traits: ['독창적 시각', '몽상적', '순수함', '개성 넘침'],
+    desc: '세상을 남들과 다른 눈으로 바라보는 당신. 산토끼 패트로누스는 꿈과 현실의 경계를 넘나드는 자유로운 영혼을 선택합니다. 당신의 독특함은 힘입니다.',
+    weights: [0.20, 0.15, 0.00, 0.15, 0.30, 0.05, 0.15],
+    ageBonus: { min: 12, max: 25, bonus: 5 },
+  },
+  {
+    id: 'wolf', name: '늑대 (Wolf)', emoji: '🐺',
+    wizard: '리무스 루핀', house: 'gryffindor',
+    wikiQuery: 'Remus_Lupin', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAyMDEyMjdfNjkg/MDAxNjA5MDU5Njc5NDUy.SeT0uTR-GoIT6B0Ssm9l5-I7XLYzpIJdcXvtCeG3apAg.dx0ZaLbdTBlzIP7zmPLgPLKEJBhvi9MtL4_0Z-695qIg.JPEG.jshn0107/ll.jpg?type=w773',
+    traits: ['충성심', '보호 본능', '강인함', '내면의 갈등'],
+    desc: '무리를 지키는 늑대처럼, 당신은 사랑하는 이들을 위해 어둠 속에서도 싸웁니다. 내면의 복잡한 감정을 품으면서도 흔들리지 않는 충성심이 빛납니다.',
+    weights: [0.15, 0.20, 0.20, 0.15, 0.10, 0.05, 0.15],
+    ageBonus: { min: 20, max: 45, bonus: 5 },
+  },
+  {
+    id: 'goat', name: '염소 (Goat)', emoji: '🐐',
+    wizard: '애버포스 덤블도어', house: 'gryffindor',
+    wikiQuery: 'Aberforth_Dumbledore', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMTc4/MDAxNDgyOTk4MzI4MjA5.M2R5oFzslhxSzhvESCgZf_BEev_6kywqicziMR6RnnUg.vSB7gL9T1Yyp6eEmLyodMPJAL2HpWWMKj_fBdC8HF7Ag.JPEG.jshn0107/dom.jpg?type=w773',
+    traits: ['소탈함', '뚝심', '솔직함', '숨겨진 따뜻함'],
+    desc: '화려함보다 진심을 택하는 당신. 염소 패트로누스는 겉으로는 투박해 보여도 속으로는 누구보다 따뜻한 마음을 품은 사람을 선택합니다.',
+    weights: [0.05, 0.30, 0.25, 0.05, 0.05, 0.05, 0.25],
+    ageBonus: { min: 35, max: 80, bonus: 6 },
+  },
+  {
+    id: 'fox', name: '여우 (Fox)', emoji: '🦊',
+    wizard: '시무스 피니간', house: 'gryffindor',
+    wikiQuery: 'Seamus_Finnigan', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMTM0/MDAxNDgyOTk4MzI4NTgz.dWwp53Ze-k9QzDZim61cSfTy7r0Le0Kgwo5txbd_vYcg.S3_7U-VsCnguPgpf55q46PNGZ-AkIT05d1qSAKEvnz4g.JPEG.jshn0107/sim.jpg?type=w773',
+    traits: ['재치', '활기', '눈치 빠름', '유쾌함'],
+    desc: '순간의 기지와 유쾌한 에너지로 어떤 상황도 돌파하는 당신. 여우 패트로누스는 재치 있고 활기차며 눈치 빠른 사람 곁에 나타납니다.',
+    weights: [0.40, 0.05, 0.10, 0.10, 0.20, 0.05, 0.10],
+    ageBonus: { min: 13, max: 25, bonus: 5 },
+  },
+  {
+    id: 'boar', name: '멧돼지 (Boar)', emoji: '🐗',
+    wizard: '어니 맥밀란', house: 'hufflepuff',
+    wikiQuery: 'Ernest_Macmillan', charImg: 'https://i.namu.wiki/i/FSi5kdjyQSGJR7bKRhY7FP2ZRwDtvBG6Kkvy67iBm9zLv1cduBFRXH7ULQ-rxGNSIO6ks-l5a6sUOSLLNg-REA.webp',
+    img: 'https://postfiles.pstatic.net/MjAyMDEyMjdfMTYz/MDAxNjA5MDU5MzUyMjEx._Qh_Mi9DWhPB6fTKgkow7zSoEUA7jZMGd4NgUtuNEV8g.iD0Zf4LzdT649pv-HiTQWtlHFr9okOwrDSnQrpYDIz8g.JPEG.jshn0107/w.jpg?type=w386',
+    traits: ['성실함', '뚝심', '책임감', '정직함'],
+    desc: '맡은 바를 끝까지 해내는 묵묵한 뚝심의 소유자. 멧돼지 패트로누스는 화려하지 않아도 언제나 제자리를 지키는 성실하고 책임감 있는 사람을 선택합니다.',
+    weights: [0.10, 0.10, 0.35, 0.05, 0.10, 0.05, 0.25],
+    ageBonus: { min: 20, max: 50, bonus: 5 },
+  },
+  {
+    id: 'weasel', name: '족제비 (Weasel)', emoji: '🦡',
+    wizard: '아서 위즐리', house: 'gryffindor',
+    wikiQuery: 'Arthur_Weasley', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAyMDEyMjdfMTIg/MDAxNjA5MDU5ODYyMjk1.R_pkMnTo1E0RvPnUJsBvhZHYqAA6Q9v9E5N_x4ysy7Yg.XsIPCl-5hrmFwlEvTyov-a7XlQmxHqUIlXN5H7EDseEg.JPEG.jshn0107/w.jpg?type=w773',
+    traits: ['호기심', '친근함', '가족애', '유쾌함'],
+    desc: '끝없는 호기심과 사람을 편안하게 만드는 친근함. 족제비 패트로누스는 소소한 것에서 기쁨을 찾고 가족과 친구를 세상 누구보다 소중히 여기는 사람을 선택합니다.',
+    weights: [0.35, 0.05, 0.05, 0.05, 0.25, 0.00, 0.25],
+    ageBonus: { min: 30, max: 60, bonus: 5 },
+  },
+  {
+    id: 'swan', name: '백조 (Swan)', emoji: '🦢',
+    wizard: '초 챙', house: 'ravenclaw',
+    wikiQuery: 'Cho_Chang', charImg: '',
+    img: 'https://postfiles.pstatic.net/MjAxNjEyMjlfMjI1/MDAxNDgyOTk4MzI4MjA0.Pm9vjjVY9fo8qdEN5lNLln-mQlwi11qekrWZovFdmaog.tI3NI1VD6EposIv6n6qIxUxnTgJbIopuS3V9DsBbkk4g.JPEG.jshn0107/cho.jpg?type=w773',
+    traits: ['우아함', '품격', '감수성', '순수한 사랑'],
+    desc: '고요한 수면 위를 미끄러지듯 움직이는 백조처럼, 당신은 어떤 상황에서도 품격을 잃지 않습니다. 깊은 감수성과 순수한 사랑이 당신의 패트로누스를 만들었습니다.',
+    weights: [0.15, 0.25, 0.05, 0.10, 0.10, 0.05, 0.30],
+    ageBonus: { min: 14, max: 30, bonus: 5 },
+  },
+];
+
+// ─── Wikipedia 썸네일 ─────────────────────────────────────────────────────────
+async function fetchWikiThumb(query) {
+  try {
+    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`);
+    if (!res.ok) return '';
+    const d = await res.json();
+    return d.thumbnail?.source || '';
+  } catch { return ''; }
+}
+
+// ─── 상태 ─────────────────────────────────────────────────────────────────────
+let stream = null, detectionLoop = null, modelsLoaded = false, lastDetection = null;
+const video          = document.getElementById('video');
+const overlayCanvas  = document.getElementById('overlay-canvas');
+const ctx            = overlayCanvas.getContext('2d');
+
+// ─── 모델 로딩 ────────────────────────────────────────────────────────────────
+async function loadModels() {
+  setStatus('AI 모델 로딩 중... (최초 1회, 잠시 기다려주세요)');
+  const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model';
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+      faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL),
+    ]);
+    modelsLoaded = true;
+    setStatus('얼굴을 화면 중앙에 위치시키세요 ✨');
+    document.getElementById('capture-btn').disabled = false;
+    startDetectionLoop();
+  } catch (e) {
+    setStatus('모델 로딩 실패 — 인터넷 연결을 확인해주세요');
+    console.error(e);
+  }
+}
+
+// ─── 카메라 ───────────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    video.srcObject = stream;
+    await video.play();
+    document.getElementById('start-btn').disabled = true;
+    await loadModels();
+  } catch (e) { setStatus('카메라 접근 실패: ' + e.message); }
+}
+
+function setStatus(msg) { document.getElementById('status-text').textContent = msg; }
+
+// ─── 감지 루프 ────────────────────────────────────────────────────────────────
+function startDetectionLoop() {
+  if (detectionLoop) clearInterval(detectionLoop);
+  detectionLoop = setInterval(async () => {
+    if (!modelsLoaded || video.paused || video.ended) return;
+    try {
+      const result = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
+        .withFaceExpressions().withAgeAndGender();
+
+      overlayCanvas.width  = video.videoWidth;
+      overlayCanvas.height = video.videoHeight;
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      if (result) {
+        lastDetection = result;
+        const { x, y, width, height } = result.detection.box;
+        ctx.strokeStyle = '#c9a84c';
+        ctx.lineWidth   = 3;
+        ctx.shadowColor = '#f0d080';
+        ctx.shadowBlur  = 14;
+        ctx.strokeRect(x, y, width, height);
+        ctx.shadowBlur  = 0;
+        ctx.fillStyle   = 'rgba(0,0,0,0.65)';
+        ctx.fillRect(x, y - 24, 120, 22);
+        ctx.fillStyle   = '#f0d080';
+        ctx.font        = '12px Cinzel, Georgia, serif';
+        ctx.fillText(`${Math.round(result.age)}세 · ${result.gender === 'male' ? '남성' : '여성'}`, x + 6, y - 7);
+        setStatus('얼굴 감지됨 ✨ 분석하기를 눌러주세요!');
+        document.getElementById('capture-btn').disabled = false;
+      } else {
+        lastDetection = null;
+        setStatus('얼굴을 화면 중앙에 위치시켜 주세요');
+      }
+    } catch {}
+  }, 300);
+}
+
+// ─── 촬영 & 분석 ──────────────────────────────────────────────────────────────
+async function captureAndAnalyze() {
+  if (!lastDetection) { setStatus('얼굴이 감지되지 않았습니다.'); return; }
+
+  // 플래시
+  const flashEl = document.getElementById('flash');
+  flashEl.classList.add('active');
+  setTimeout(() => flashEl.classList.remove('active'), 120);
+
+  clearInterval(detectionLoop);
+  document.getElementById('capture-btn').disabled = true;
+
+  const detection = lastDetection;
+
+  // 점수 계산 (빠른 동기 연산 — 기숙사를 모자 애니메이션 전에 알 수 있음)
+  const scores = calculateScores(detection);
+  scores.sort((a, b) => b.score - a.score);
+
+  const pct1 = Math.round(75 + Math.random() * 17);
+  const pct2 = Math.round(pct1 - 8  - Math.random() * 10);
+  const pct3 = Math.round(pct2 - 5  - Math.random() * 8);
+  scores[0].pct = pct1; scores[1].pct = pct2; scores[2].pct = pct3;
+
+  const house = HOUSES[scores[0].patronus.house];
+
+  // 카메라 숨기고 모자 섹션 보이기
+  document.getElementById('camera-section').style.display = 'none';
+  const hatSection = document.getElementById('hat-section');
+  hatSection.style.display = 'flex';
+
+  // 모자 애니메이션 & 위키 이미지 병렬 실행
+  const fetchJobs = scores.slice(0, 3).map(s =>
+    s.patronus.charImg ? Promise.resolve(s.patronus.charImg) : fetchWikiThumb(s.patronus.wikiQuery)
+  );
+  const [imgs] = await Promise.all([
+    fetchJobs.length ? Promise.all(fetchJobs) : Promise.resolve([]),
+    animateSortingHat(house),
+  ]);
+  if (imgs.length) scores.slice(0, 3).forEach((s, i) => { s.charImg = imgs[i]; });
+
+  hatSection.style.display = 'none';
+  showResult(scores, detection.expressions);
+}
+
+// ─── 점수 계산 ────────────────────────────────────────────────────────────────
+function calculateScores(detection) {
+  const expr = detection.expressions;
+  const age  = detection.age;
+  const exprKeys = ['happy','sad','angry','fearful','surprised','disgusted','neutral'];
+  return PATRONUSES.map(p => {
+    let score = exprKeys.reduce((s, k, i) => s + (expr[k] || 0) * p.weights[i], 0);
+    if (age >= p.ageBonus.min && age <= p.ageBonus.max) score += p.ageBonus.bonus / 200;
+    score += (Math.random() - 0.5) * 0.12;
+    return { patronus: p, score };
+  });
+}
+
+// ─── 분류 모자 애니메이션 ─────────────────────────────────────────────────────
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function typeText(el, text, speed = 55) {
+  return new Promise(resolve => {
+    el.textContent = '';
+    let i = 0;
+    const t = setInterval(() => {
+      el.textContent += text[i++];
+      if (i >= text.length) { clearInterval(t); resolve(); }
+    }, speed);
+  });
+}
+
+async function animateSortingHat(house) {
+  const speechEl = document.getElementById('hat-speech-text');
+  const hatWrap  = document.getElementById('hat-svg-wrap');
+
+  const lines = [
+    '흠... 흠흠흠...',
+    '머릿속을 들여다보자...',
+    house.hint,
+    '결정했다!',
+  ];
+
+  for (const line of lines) {
+    await typeText(speechEl, line, 55);
+    await delay(650);
+  }
+
+  // 모자 흔들기
+  hatWrap.classList.add('hat-shout');
+  await delay(500);
+  hatWrap.classList.remove('hat-shout');
+
+  // 기숙사 이름 크게
+  speechEl.style.fontSize   = '1.3rem';
+  speechEl.style.fontWeight = '700';
+  speechEl.style.color      = house.colors.text;
+  speechEl.textContent      = house.name + '!!!';
+  await delay(500);
+
+  // 전면 공개 오버레이
+  const flashDiv = document.getElementById('house-flash');
+  flashDiv.style.background = house.colors.primary;
+  document.getElementById('flash-animal').innerHTML = `<img src="${house.crest}" alt="${house.name}" style="width:100px;height:118px;object-fit:contain;filter:drop-shadow(0 0 20px rgba(255,255,200,0.4))">`;
+  document.getElementById('flash-name').textContent   = house.name;
+  document.getElementById('flash-en').textContent     = house.english;
+  flashDiv.classList.add('show');
+  await delay(1800);
+  flashDiv.classList.remove('show');
+  await delay(350);
+
+  // 말풍선 스타일 초기화
+  speechEl.style.fontSize   = '';
+  speechEl.style.fontWeight = '';
+  speechEl.style.color      = '';
+}
+
+// ─── 결과 표시 ────────────────────────────────────────────────────────────────
+function showResult(scores, expressions) {
+  const top = scores[0];
+  const p   = top.patronus;
+  const h   = HOUSES[p.house];
+
+  // CSS 변수로 기숙사 색상 적용
+  const r = document.documentElement;
+  r.style.setProperty('--house-primary', h.colors.primary);
+  r.style.setProperty('--house-accent',  h.colors.accent);
+  r.style.setProperty('--house-text',    h.colors.text);
+  r.style.setProperty('--house-glow',    h.colors.glow);
+
+  // 기숙사 배너
+  document.getElementById('res-house-icon').innerHTML    = `<img src="${h.crest}" alt="${h.name}" style="width:54px;height:64px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5))">`;
+  document.getElementById('res-house-kr').textContent    = h.name + ' 기숙사';
+  document.getElementById('res-house-en').textContent    = h.english;
+  document.getElementById('res-house-motto').textContent = h.motto;
+
+  // 패트로누스 정보
+  document.getElementById('res-name').textContent        = p.name;
+  document.getElementById('res-wizard').textContent      = p.wizard + '의 패트로누스';
+  document.getElementById('res-pct').textContent         = top.pct + '%';
+  document.getElementById('res-desc').textContent        = p.desc;
+  document.getElementById('res-char-label').textContent  = p.wizard;
+
+  // 마법사 사진
+  const charImg = document.getElementById('res-char-img');
+  if (top.charImg) {
+    charImg.src = top.charImg;
+  } else {
+    charImg.src = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='130' height='160'><rect width='130' height='160' fill='%23111'/><text y='88' x='65' font-size='38' text-anchor='middle' fill='%23c9a84c'>🧙</text><text y='112' x='65' font-size='10' text-anchor='middle' fill='%23886633'>${encodeURIComponent(p.wizard)}</text></svg>`;
+  }
+
+  // 패트로누스 사진
+  const patImg = document.getElementById('res-patronus-img');
+  if (p.img) {
+    patImg.src = p.img;
+  } else {
+    patImg.src = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='130' height='160'><rect width='130' height='160' fill='%230a0a20'/><text y='95' x='65' font-size='60' text-anchor='middle'>${encodeURIComponent(p.emoji)}</text></svg>`;
+  }
+
+  // 특성 태그
+  document.getElementById('res-traits').innerHTML =
+    p.traits.map(t => `<span class="trait-tag">${t}</span>`).join('');
+
+  // 순위 (1~3위)
+  const medals      = ['🥇','🥈','🥉'];
+  const barClasses  = ['gold','silver','bronze'];
+  document.getElementById('ranking-list').innerHTML =
+    scores.slice(0, 3).map((s, i) => {
+      const thumb = s.charImg
+        ? `<img src="${s.charImg}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;border:1px solid var(--house-accent);flex-shrink:0;" onerror="this.style.display='none'">`
+        : '';
+      return `
+      <div class="rank-item">
+        <div class="rank-medal">${medals[i]}</div>
+        ${thumb}
+        <div class="rank-info">
+          <div class="rank-name">
+            <span>${s.patronus.name}</span>
+            <span class="rank-pct">${s.pct}%</span>
+          </div>
+          <div class="rank-bar-bg">
+            <div class="rank-bar ${barClasses[i]}" data-pct="${s.pct}" style="width:0%"></div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+  // 표정 데이터
+  const exprKeys   = ['happy','sad','angry','fearful','surprised','disgusted','neutral'];
+  const exprLabels = { happy:'행복', sad:'슬픔', angry:'분노', fearful:'공포', surprised:'놀람', disgusted:'혐오', neutral:'중립' };
+  document.getElementById('expr-grid').innerHTML =
+    exprKeys.map(k => `
+    <div class="expr-item">
+      <div class="expr-label">${exprLabels[k]}</div>
+      <div class="expr-val">${Math.round((expressions[k] || 0) * 100)}%</div>
+    </div>`).join('');
+
+  document.getElementById('result-section').style.display = 'block';
+
+  setTimeout(() => {
+    document.querySelectorAll('.rank-bar').forEach(b => { b.style.width = b.dataset.pct + '%'; });
+  }, 200);
+}
+
+// ─── 초기화 ───────────────────────────────────────────────────────────────────
+function resetToCamera() {
+  document.getElementById('result-section').style.display = 'none';
+  document.getElementById('camera-section').style.display = 'flex';
+  ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  // 기숙사 색상 리셋
+  const r = document.documentElement;
+  r.style.setProperty('--house-primary', '#740001');
+  r.style.setProperty('--house-accent',  '#d3a625');
+  r.style.setProperty('--house-text',    '#ffc500');
+  r.style.setProperty('--house-glow',    'rgba(116,0,1,0.35)');
+  if (modelsLoaded) {
+    document.getElementById('capture-btn').disabled = false;
+    setStatus('얼굴을 화면 중앙에 위치시키세요 ✨');
+    startDetectionLoop();
+  }
+}
+</script>
+</body>
+</html>
